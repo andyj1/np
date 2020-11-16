@@ -1,0 +1,8 @@
+num_samples: 50
+mu: 0
+sigma: 5
+dist_mu: 10
+dist_sigma: 10
+angle_mu: 0
+angle_sigma: 40
+

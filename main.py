@@ -1,128 +1,84 @@
-''' Pipeline 
-1. retrieve data from CSV -> X, y 
-    * Y should ideally be from an objective function f that maps X to y (f: X -> y)
-    ex) X = PRE_R
-        y = POST_R
-2. define a surrogate model
-    ex) GPR
-        NPR
-3. train the surrogate model with context data (X, y) pairs
-4. from the optimized acquisition function (sampling from the optimized/trained model),
-    sample for the next input X_new
-    * inputs are random search (for now, but will be within the defined range for optimization)
-    * also takes in the trained model
-    * returns X_new that yields the best probability within the defined bound
-5. from the objective function, retrieve the sample point for the newly searching X, (X_new)
-6. predict mean and std dev with the trained surrogate model for that new sample X_new
-7. compare Y from the objective(X_new) and estimated mean from the surrogate model
-8. update surrogate model with the new sample and objective(X_new) output
+''' Procedure
+1. data
+    a. X
+        - load PRE (assume Gaussian)
+        - load post: assume some reflow oven effect (angular and distance shift) from PRE
+    b. Y
+        - compute the Euclidean distance to use as the target_tensor 
+2. load model
+3. train model with X and Y
+4. sample a new PRE value from the optimized acquisition
+5. determine corresponding POST values 
+6. compute the Euclidean distance to use and append as the new target_tensor value
+7. visualize altogether iteratively
 '''
 
-import copy
-import os
-import sys
-from pathlib import Path
+import math, os, sys
 
-import numpy as np
-import pandas as pd
-import seaborn as sns
+import yaml
+from tqdm import trange
 import torch
-import torch.nn as nn
-import torch.optim as optim
-from numpy import arange, argmax, asarray, vstack
-from numpy.random import normal, random
-from scipy.cluster.vq import kmeans, vq, whiten
-from sklearn.gaussian_process import GaussianProcessRegressor  # surrogate model class
+import matplotlib.pyplot as plt
 
-from bayes_utils import acquisition, opt_acquisition, plot, surrogate, objective
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-pd.set_option('display.max_columns', None)
-
-base_path = './'
-file = 'MOM4_data.csv'
-data_path = os.path.join(base_path, file)
-
-# prepare result directory
-result_path = os.path.join(base_path, 'result')
-if not os.path.isdir(result_path):
-    os.makedirs(result_path)
-
-# read in data
-print('[INFO] Loading %s...' % data_path)
-df = pd.read_csv(data_path, index_col=False).drop(['Unnamed: 0'], axis=1)
-df.reset_index(drop=True, inplace=True)
-assert df.isnull().sum().sum() == 0
-
-chip_dataframes = dict()
-for name, group in df.groupby(['PartType']):
-    chip_dataframes[str(name)] = group
-
-parttype = 'R1005'
-xvar = 'PRE_R'
-yvar = 'POST_W'
-data = chip_dataframes[parttype]
-
-# sample the domain sparsely with noise, reshape into rows and cols
-# X = random(100)
-# y = asarray([objective(x) for x in X])
-# X = X.reshape(len(X), 1)
-# y = y.reshape(len(y), 1)
-X = data['PRE_R'].values[0:10].reshape(-1, 1).astype(np.float32)
-Y = data['POST_R'].values[0:10].reshape(-1, 1).astype(np.float32)
-
-# pseudo-objective function for X and y
-obj_dict = dict()  # key: str(x), value: y
-for (x, y) in list(zip(X, Y)):
-    print('x: %f, y: %f' % (x, y))
-    try:
-        obj_dict[str(x)] = y
-    except KeyError:
-        obj_dict[str(x)] = 0.
-
-# define the model (surrogate)
-model = GaussianProcessRegressor()
-# model = NeuralProcessRegressor()
-
-# train the model (GaussianProcessRegressor)
-model.fit(X, Y)
-
-# train the model (NeuralProcessRegressor)
-# model.train(epochs, n_context, all_x_np, all_y_np)
-# vals = np.arange(min(all_x_np), max(all_x_np), 1e-3)
-# x_grid = torch.from_numpy(vals.reshape(-1, 1).astype(np.float32))
-
-# hidden_dim, decoder_dim, z_samples = 10, 15, 20  # 10, 15, 20
-# model = NP(hidden_dim, decoder_dim, z_samples).to(device)
-# optimizer = optim.Adam(model.parameters(), lr=0.01)
-# n_context = np.random.randint(20, 30) # a random number between the two numbers
-# n_context = 20
-# train(10**5, n_context)
+from surrogate import SurrogateModel
+from acquisition import AcquisitionFunction
+from bo_utils import objective, contourplot
+from dataset import toydataGenerator, _toydataPOST
 
 
-# def objective(x): return obj_dict[str(x)]
-
-
-# plot all
-plot(X, Y, model)
-# perform the optimization process
-# for i in range(100):
-for i in arange(min(X), max(X), 1e-1):
-    # select the next point to sample
-    x = opt_acquisition(X, model, min(X), max(X))
-    # sample the point
-    actual = objective(x)
-    # summarize the finding
-    est, _ = surrogate(model, [[x]])
-    print('>x=%.3f, f()=%3f, actual=%.3f' % (x, est, actual))
-    # add the data to the dataset
-    X = vstack((X, [[x]]))
-    Y = vstack((Y, [[actual]]))
-    # update the model
-    model.fit(X, Y)
-
-# plot all samples and the final surrogate function
-plot(X, Y, model)
-# best result
-ix = argmax(Y)
-print('Best Result: x=%.3f, y=%.3f' % (X[ix], Y[ix]))
+if __name__ == '__main__':
+    # toy data generation
+    # load Pre-AOI and Post-AOI data
+    with open('config.yml', 'r')  as file:
+        cfg = yaml.load(file, yaml.FullLoader)
+    x_pre, y_pre, x_post, y_post = toydataGenerator(cfg)
+    
+    # fig = plt.figure()
+    # ax1 = fig.add_subplot(121)
+    # simpleplot(x_pre, y_pre, ax1, title='PRE', legend='PRE')
+    # ax2 = fig.add_subplot(122)
+    # simpleplot(x_post, y_post, ax2, title='POST', legend='POST')
+    # fig.tight_layout()
+    # plt.show()
+    contourplot(x_pre, y_pre, 'pre')
+    contourplot(x_post, y_post, 'post')    
+    
+    # objective: to minimize the distance from the POST to origin toward zero
+    euclidean_dist = [objective(x1, x2) for x1, x2 in zip(x_post, y_post)]
+    
+    input_tensor = torch.cat([x_pre, y_pre], dim=1) # (N,2) dim
+    target_tensor = torch.FloatTensor(euclidean_dist).unsqueeze(1) # (N,1) dim
+    
+    # initialize and fit model
+    surrogate = SurrogateModel()
+    surrogate.fit(input_tensor, target_tensor)
+    
+    # loop training the model with online data
+    NUM_ITER = 100
+    candidates_pre = []
+    candidates_post = []
+    for _ in trange(NUM_ITER):
+        surrogate.model.eval()
+        
+        # optimize acquisition function -> candidate x, y
+        acq_fcn = AcquisitionFunction(model=surrogate.model, beta=0.1)
+        candidate, acq_value = acq_fcn.optimize()
+        
+        # actual values from the objective, compute the distance
+        x_new_post, y_new_post =_toydataPOST(candidate[0][0], candidate[0][1], cfg)
+        
+        # append to current list
+        input_tensor = torch.cat([input_tensor, torch.FloatTensor(candidate)], dim=0)
+        new_euc_dist_actual = torch.FloatTensor([objective(candidate[0][0], candidate[0][1])]).unsqueeze(1)
+        target_tensor = torch.cat([target_tensor, new_euc_dist_actual])
+        
+        print('[updated] input shape:',input_tensor.shape, \
+                'output tensor:',target_tensor.shape)
+        # train
+        surrogate.fit(input_tensor, target_tensor)
+                
+        # eval
+        x = input_tensor
+        posterior = surrogate.eval(x)
+        print('posterior(',len(posterior),'):', posterior)
+        
