@@ -40,8 +40,8 @@ if __name__ == '__main__':
     # simpleplot(x_post, y_post, ax2, title='POST', legend='POST')
     # fig.tight_layout()
     # plt.show()
-    contourplot(x_pre, y_pre, 'pre')
-    contourplot(x_post, y_post, 'post')    
+    # contourplot(x_pre, y_pre, 'pre')
+    # contourplot(x_post, y_post, 'post')    
     
     # objective: to minimize the distance from the POST to origin toward zero
     euclidean_dist = [objective(x1, x2) for x1, x2 in zip(x_post, y_post)]
@@ -52,6 +52,10 @@ if __name__ == '__main__':
     # initialize and fit model
     surrogate = SurrogateModel()
     surrogate.fit(input_tensor, target_tensor)
+    # NP
+    
+    print(input_tensor.shape, target_tensor.shape)
+    surrogate.fitNP(input_tensor, target_tensor, cfg)
     
     # loop training the model with online data
     NUM_ITER = 100

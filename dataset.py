@@ -18,7 +18,7 @@ def toydataGenerator(cfg):
 
     assert x_pre.shape == y_pre.shape
     assert x_post.shape == y_post.shape
-    print('sizes:',x_pre.shape, y_pre.shape, x_post.shape, y_post.shape)
+    # print('sizes:',x_pre.shape, y_pre.shape, x_post.shape, y_post.shape)
     # print(torch.cat([x_pre, y_pre], dim=1))
     return x_pre, y_pre, x_post, y_post
 

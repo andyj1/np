@@ -66,20 +66,19 @@ class SurrogateModel(nn.Module):
             # t.refresh()
         self.model = model
     
-    def fitNP(self, train_X, train_Y):
-        hidden_dim , decoder_dim, z_samples = 10, 15, 20 # 10, 15, 20
-        model = NP(hidden_dim , decoder_dim, z_samples).to(device)
+    def fitNP(self, train_X, train_Y, cfg):        
+        model = NP(cfg['hidden_dim'] , cfg['decoder_dim'], cfg['z_samples']).to(device)
         optimizer = optim.Adam(model.parameters(), lr=0.01)
         
         for epoch in range(self.epochs):
             optimizer.zero_grad()
             # split into 
-            x_context, y_context, x_target, y_target = random_split_context_target(all_x_np, all_y_np, n_context)
+            x_context, y_context, x_target, y_target = random_split_context_target(train_X, train_Y, cfg['num_context'])
             # send to gpu
-            x_context = torch.from_numpy(x_context).to(device)
-            y_context = torch.from_numpy(y_context).to(device)
-            x_target = torch.from_numpy(x_target).to(device)
-            y_target = torch.from_numpy(y_target).to(device)
+            x_context = x_context.to(device)
+            y_context = y_context.to(device)
+            x_target = x_target.to(device)
+            y_target = y_target.to(device)
             # forward pass
             mu, std, z_mean_all, z_std_all, z_mean, z_std = model(x_context, y_context, x_target, y_target)
             # loss calculation
@@ -89,6 +88,7 @@ class SurrogateModel(nn.Module):
             training_loss = loss.item()
             optimizer.step()
             print('epoch: {} loss: {}'.format(epoch, training_loss/200))
+        self.model = model
         
         
     def eval(self, test_X):

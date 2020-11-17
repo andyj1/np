@@ -17,8 +17,8 @@ from np_utils import log_likelihood, KLD_gaussian, random_split_context_target
 class NP(nn.Module):
     def __init__(self, hidden_dim, decoder_dim, z_samples):
         super(NP, self).__init__()
-        in_dim = 2  
-        out_dim = 2 
+        in_dim = 3
+        out_dim = 2
         self.z_dim = 2
         self.z_samples = z_samples
         # for data (Xc, Yc) --> representation (r)
@@ -95,22 +95,22 @@ class NP(nn.Module):
         mu, std = self.decoder(x_context, zs)
         return mu, std, z_mean_all, z_std_all, z_mean, z_std
     
-    
-            # test with target points
-            # TODO
+
+        # test with target points
+        # TODO
 
     ''' data example
         parttype, xvar, yvar = 'R0402', 'PRE_L', 'POST_L'
         all_x_np = chip_dataframes[parttype][xvar].values[0:-1].reshape(-1, 1).astype(np.float32)
         all_y_np = chip_dataframes[parttype][yvar].values[0:-1].reshape(-1, 1).astype(np.float32)
     '''
-    vals = np.arange(min(all_x_np), max(all_x_np), 1e-3)
-    x_grid = torch.from_numpy(vals.reshape(-1, 1).astype(np.float32))
+    # vals = np.arange(min(all_x_np), max(all_x_np), 1e-3)
+    # x_grid = torch.from_numpy(vals.reshape(-1, 1).astype(np.float32))
 
-    hidden_dim , decoder_dim, z_samples = 10, 15, 20 # 10, 15, 20
-    model = NP(hidden_dim , decoder_dim, z_samples).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=0.01)
-    # n_context = np.random.randint(20, 30) # a random number between the two numbers
-    n_context = 20
-    train(10**5, n_context)
+    # hidden_dim , decoder_dim, z_samples = 10, 15, 20 # 10, 15, 20
+    # model = NP(hidden_dim , decoder_dim, z_samples).to(device)
+    # optimizer = optim.Adam(model.parameters(), lr=0.01)
+    # # n_context = np.random.randint(20, 30) # a random number between the two numbers
+    # n_context = 20
+    # train(10**5, n_context)
 

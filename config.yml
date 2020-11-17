@@ -5,4 +5,7 @@ dist_mu: 10
 dist_sigma: 10
 angle_mu: 0
 angle_sigma: 40
-
+num_context: 10
+hidden_dim: 10
+decoder_dim: 15
+z_samples: 20
