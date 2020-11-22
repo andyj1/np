@@ -1,3 +1,4 @@
+num_iter: 100
 num_samples: 50
 mu: 0
 sigma: 5

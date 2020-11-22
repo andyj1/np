@@ -3,7 +3,7 @@ import torch.nn as nn
 from botorch.models import SingleTaskGP
 from gpytorch.constraints.constraints import GreaterThan
 from gpytorch.mlls import ExactMarginalLogLikelihood
-
+from botorch.fit import fit_gpytorch_model
 from torch.optim import SGD
 import torch.optim as optim
 from tqdm import trange
@@ -42,16 +42,16 @@ class SurrogateModel(nn.Module):
         # fit_gpytorch_model uses L-BFGS-B to fit the parameters by default
         fit_gpytorch_model(self.mll)
         '''
-        
     # custom fitting
     def fit(self, train_X, train_Y):
         model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
         model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
         mll = ExactMarginalLogLikelihood(model.likelihood, model).to(train_X)
         mll.to(dtype)
+        fit_gpytorch_model(mll)
+        '''
         model.train() # set train mode
-        optimizer = SGD([{'params': model.parameters()}], lr=0.1)
-        
+        optimizer = SGD([{'params': model.parameters()}], lr=0.1)        
         t = trange(self.epochs, desc='', leave=False)
         for epoch in t:
             optimizer.zero_grad()
@@ -64,8 +64,10 @@ class SurrogateModel(nn.Module):
             
             # t.set_description("[Train] Epoch %i / %i\t" % (epoch, self.epochs))
             # t.refresh()
+        '''
         self.model = model
     
+    # TODO: modify this
     def fitNP(self, train_X, train_Y, cfg):        
         model = NP(cfg['hidden_dim'] , cfg['decoder_dim'], cfg['z_samples']).to(device)
         optimizer = optim.Adam(model.parameters(), lr=0.01)
@@ -90,7 +92,9 @@ class SurrogateModel(nn.Module):
             print('epoch: {} loss: {}'.format(epoch, training_loss/200))
         self.model = model
         
-        
+    '''
+    eval: performs evaluation at test points and return mean and lower, upper bounds
+    '''
     def eval(self, test_X):
         posterior, variance = None, None
         if self.model is not None:
@@ -99,4 +103,4 @@ class SurrogateModel(nn.Module):
                 posterior = self.model.posterior(test_X)
                 # upper and lower confidence bounds (2 standard deviations from the mean)
                 lower, upper = posterior.mvn.confidence_region()
-        return posterior.mean.cpu().numpy()
+            return posterior.mean.cpu().numpy(), (lower.cpu().numpy(), upper.cpu().numpy())

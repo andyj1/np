@@ -11,7 +11,7 @@ from warnings import simplefilter
 import matplotlib.pyplot as plt
 
 import os
-result_dir = 'gpr_example_results'
+result_dir = 'sklearn_gpr_ex_results'
 if not os.path.exists(result_dir):
     os.mkdir(result_dir, mode=0o755)
 filename = 0

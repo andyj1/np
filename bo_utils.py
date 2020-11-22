@@ -13,6 +13,7 @@ def objective(x, y):
     # return (x**2 * sin(5 * pi * x)**6.0) + noise
     return np.linalg.norm((x,y))    
 
+'''
 def surrogate(model, X):
     # catch any warning generated when making a prediction
     with catch_warnings():
@@ -45,37 +46,4 @@ def opt_acquisition(X, model, minval, maxval):
     # locate the index of the largest scores
     ix = argmax(scores)
     return Xsamples[ix, 0]
-
-
-# def plot(X, y, fig):
-#     # scatter plot of inputs and real objective function
-#     plt.scatter(X, y)
-#     # line plot of surrogate function across domain
-#     Xsamples = asarray(arange(0, 1, 0.001))
-#     Xsamples = Xsamples.reshape(len(Xsamples), 1)
-#     ysamples, _ = surrogate(model, Xsamples)
-#     plt.plot(Xsamples, ysamples)
-#     # show the plot
-#     plt.show()
-
-def simpleplot(X, y, ax, title='points', xlabel='x', ylabel='y', legend='', label=''):
-    indices_to_order_by = X.squeeze().argsort() # dim squeeze: 10x1 -> 10
-    x_ordered = X[indices_to_order_by]
-    y_ordered = y[indices_to_order_by]
-    ax.plot(x_ordered, y_ordered, marker="o", markerfacecolor="r", label=label)
-    # ax.scatter(X, y, label=legend)
-    ax.legend(loc='best')
-    ax.set_title(title)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    
-def contourplot(x, y, label):
-    xx, yy = np.meshgrid(x, y)
-    zz = np.sqrt(xx**2+yy**2) #np.linalg.norm((xx,yy))
-    fig, ax = plt.subplots(1,1)
-    cp = ax.contourf(xx, yy, zz, label=label)
-    fig.colorbar(cp)
-    ax.set_title('contour plot - '+label)
-    ax.set_xlabel('x')
-    ax.set_xlabel('y')
-    plt.show()
+'''
