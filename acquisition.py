@@ -1,7 +1,8 @@
-import torch
-from botorch.optim import optimize_acqf
-from botorch.acquisition.analytic import UpperConfidenceBound
 import numpy as np
+import torch
+from botorch.acquisition.analytic import UpperConfidenceBound
+from botorch.optim import optimize_acqf
+
 
 class AcquisitionFunction(object):
     def __init__(self, model, beta):
@@ -25,10 +26,11 @@ class AcquisitionFunction(object):
         print('\ncandidate:',self.candidate, 'acq_value:',self.acq_value)
         return self.candidate, self.acq_value
 
+    # for NP
     # probability of improvement acquisition function
     def acquisition(X, Xsamples, model):
         # calculate the best surrogate score found so far
-        yhat, _ = surrogate(model, X)
+        yhat, _ = model(X) # forward pass prediction
         best = max(yhat)
         # calculate mean and stdev via surrogate function
         mu, std = surrogate(model, Xsamples)
