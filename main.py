@@ -18,7 +18,6 @@ import math, os, sys
 import yaml
 from tqdm import trange
 import torch
-import matplotlib.pyplot as plt
 import numpy as np
 
 from surrogate import SurrogateModel
@@ -29,21 +28,23 @@ import viz_utils as vizutils # contourplot, draw_graphs
 from dataset import toydataGenerator, reflow_oven
 
 
+# use GPU if available
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+dtype = torch.float
+
 if __name__ == '__main__':
     """ load Pre-AOI and Post-AOI data """
     with open('config.yml', 'r')  as file:
         cfg = yaml.load(file, yaml.FullLoader)
     x_pre, y_pre, x_post, y_post = toydataGenerator(cfg)
-    print('pre : ', np.sqrt(np.sum(x_pre.numpy()**2 + y_pre.numpy()**2)),\
-          'post : ', np.sqrt(np.sum(x_post.numpy()**2 + y_post.numpy()**2)))
+    print('[INFO] pre distance:', np.sqrt(np.sum(x_pre.numpy()**2 + y_pre.numpy()**2)),
+          'post distance:', np.sqrt(np.sum(x_post.numpy()**2 + y_post.numpy()**2)))
     
     """ plot data """
     _bin = np.linspace(-120,120,60)
     _bins_x, _bins_y = np.meshgrid(_bin, _bin)
     _bins = np.concatenate([_bins_x.reshape(-1,1), _bins_y.reshape(-1,1)],1)
-    vizutils.contourplot(_bin, _bin, 'Train data', \
-                x_pre = x_pre, y_pre = y_pre, x_post = x_post, y_post = y_post, \
-                cfg = cfg)
+    vizutils.contourplot(_bin, _bin, 'Train data', x_pre = x_pre, y_pre = y_pre, x_post = x_post, y_post = y_post, cfg = cfg)
     # fig = plt.figure()
     # ax1 = fig.add_subplot(121)
     # simpleplot(x_pre, y_pre, ax1, title='PRE', legend='PRE')
@@ -64,11 +65,12 @@ if __name__ == '__main__':
     # print(input_tensor.shape, target_tensor.shape)
     
     # initialize and fit model
-    surrogate = SurrogateModel()
+    surrogate = SurrogateModel(cfg=cfg, neural=True)
+    # surrogate.fitGP(input_tensor, target_tensor)
+    # for NP model, set neural to True
     # surrogate.model.train() # unncessary for GPyTorch(BoTorch)-based model
-    surrogate.fit(input_tensor, target_tensor)
-    # surrogate.fitNP(input_tensor, target_tensor, cfg)
-    
+    surrogate.fitNP(input_tensor, target_tensor, cfg)
+        
     # training loop
     NUM_ITER = cfg['num_iter']
     candidates_pre, candidates_post = [], []
@@ -97,20 +99,20 @@ if __name__ == '__main__':
         # posterior = surrogate.eval(x)
         # print('posterior(',len(posterior),'):', posterior)
         
-        if iter % 5 == 0 and iter > 0:
-            vizutils.draw_graphs(input_tensor[:cfg['num_samples']], input_tensor[cfg['num_samples']:],
-                        x_post, y_post, cfg, iter)
-            _dim = int(np.sqrt(_bins.shape[0]))
-            vizutils.contourplot(_bin, _bin, 'Results_%d'%iter,
-                        x_pre = input_tensor[:,0], y_pre = input_tensor[:,1], x_post = x_post, y_post = y_post,
-                        cfg = cfg)
-            
+        # for visualization
+        # if iter % 5 == 0 and iter > 0:
+        #     vizutils.draw_graphs(input_tensor[:cfg['num_samples']], input_tensor[cfg['num_samples']:],
+        #                 x_post, y_post, cfg, iter)
+        #     _dim = int(np.sqrt(_bins.shape[0]))
+        #     vizutils.contourplot(_bin, _bin, 'Results_%d'%iter,
+        #                 x_pre = input_tensor[:,0], y_pre = input_tensor[:,1], x_post = x_post, y_post = y_post,
+        #                 cfg = cfg)
+    
     posterior, bnds = surrogate.eval(torch.tensor(_bins).to(torch.float32))
     print('posterior(',len(posterior),'):', min(bnds[1] - bnds[0]), max(bnds[1] - bnds[0]))
     euclidean_torch = lambda X :torch.sqrt(torch.mean(torch.sum(X**2,1),0))
     _dim = int(np.sqrt(_bins.shape[0]))
-    vizutils.contourplot(_bin, _bin, 'Results_final',
-                x_pre = input_tensor[:,0], y_pre = input_tensor[:,1], x_post = x_post, y_post = y_post,
+    vizutils.contourplot(_bin, _bin, 'Results_final', x_pre = input_tensor[:,0], y_pre = input_tensor[:,1], x_post = x_post, y_post = y_post,
                 # bnds = (bnds[1] - bnds[0]).reshape(_dim,_dim),
                 cfg = cfg)
 
@@ -119,4 +121,5 @@ if __name__ == '__main__':
     print("Train data distance, loss : ", euclidean_torch(train_data), torch.mean(target_tensor[:cfg['num_samples']]))
     print("BO data mean, std : ", torch.mean(BO_data, 0), torch.std(BO_data, 0))
     print("BO data distance, loss : ", euclidean_torch(BO_data), torch.mean(target_tensor[cfg['num_samples']:]))
+    print('\n[INFO] Finished.')
         

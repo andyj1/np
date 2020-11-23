@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.nn import functional as F
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+import sys
 
 from np_utils import log_likelihood, KLD_gaussian, random_split_context_target
 
@@ -25,8 +26,8 @@ class NP(nn.Module):
         self.hidden1 = nn.Linear(in_dim, hidden_dim)
         self.hidden2 = nn.Linear(hidden_dim, out_dim)
         # for representation (r) --> latent vector (z)
-        self.r_to_z_mu = nn.Linear(in_dim, 1)
-        self.r_to_z_std = nn.Linear(in_dim, 1)
+        self.r_to_z_mu = nn.Linear(in_dim-1, 1) # quick fix: in_dim - 1 (need to verify)
+        self.r_to_z_std = nn.Linear(in_dim-1, 1)
 
         self.decoder1 = nn.Linear(in_dim+1, decoder_dim)
         self.decoder2 = nn.Linear(decoder_dim, out_dim)
@@ -39,6 +40,7 @@ class NP(nn.Module):
     # data to representations, aggregated
     def data_to_r(self, x, y):
         x_y = torch.cat([x, y], dim=1)
+        # print('in data_to_r, x_y shape:',x_y.shape)
         hidden1 = self.hidden1(x_y) 
         hidden1_activated = F.relu(hidden1)
         r_i = self.hidden2(hidden1_activated)
@@ -48,7 +50,7 @@ class NP(nn.Module):
         return r
 
     # representation to latent vector
-    def r_to_z(self, r):
+    def r_to_z(self, r):        
         mean = self.r_to_z_mu(r)
         log_var = self.r_to_z_std(r)
         return mean, F.softplus(log_var)
@@ -82,7 +84,9 @@ class NP(nn.Module):
         
         # context data -> context repr
         r = self.data_to_r(x_context, y_context)    # data -> repr
-        z_mean, z_std = self.r_to_z(r)              # repr -> latent z
+        # print('after data_to_r, r shape:',r.shape)
+    
+        z_mean, z_std = self.r_to_z(r)   # repr -> latent z
 
         # all data -> global repr
         r_all = self.data_to_r(x_all, y_all)
@@ -95,22 +99,3 @@ class NP(nn.Module):
         mu, std = self.decoder(x_context, zs)
         return mu, std, z_mean_all, z_std_all, z_mean, z_std
     
-
-        # test with target points
-        # TODO
-
-    ''' data example
-        parttype, xvar, yvar = 'R0402', 'PRE_L', 'POST_L'
-        all_x_np = chip_dataframes[parttype][xvar].values[0:-1].reshape(-1, 1).astype(np.float32)
-        all_y_np = chip_dataframes[parttype][yvar].values[0:-1].reshape(-1, 1).astype(np.float32)
-    '''
-    # vals = np.arange(min(all_x_np), max(all_x_np), 1e-3)
-    # x_grid = torch.from_numpy(vals.reshape(-1, 1).astype(np.float32))
-
-    # hidden_dim , decoder_dim, z_samples = 10, 15, 20 # 10, 15, 20
-    # model = NP(hidden_dim , decoder_dim, z_samples).to(device)
-    # optimizer = optim.Adam(model.parameters(), lr=0.01)
-    # # n_context = np.random.randint(20, 30) # a random number between the two numbers
-    # n_context = 20
-    # train(10**5, n_context)
-

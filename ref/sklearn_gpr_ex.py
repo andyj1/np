@@ -11,7 +11,8 @@ from warnings import simplefilter
 import matplotlib.pyplot as plt
 
 import os
-result_dir = 'sklearn_gpr_ex_results'
+dir_path = os.path.dirname(os.path.realpath(__file__))
+result_dir = os.path.join(dir_path, 'sklearn_gpr_ex_results')
 if not os.path.exists(result_dir):
     os.mkdir(result_dir, mode=0o755)
 filename = 0

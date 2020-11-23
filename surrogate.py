@@ -9,16 +9,16 @@ import torch.optim as optim
 from tqdm import trange
 import sys
 
-from np_model import NP
+from NPModel import NP
 from np_utils import log_likelihood, KLD_gaussian, random_split_context_target
 
 ''' class for surrogate model
 Methods:
-    1) fit/train 
+    1) fit
         input: vector of X's (multi-dim), vector of Y (single-dim)
         ->
         output: trained model
-    2) forward/predict
+    2) eval
         input: sample point x
         ->
         output: mean and variance at x
@@ -28,12 +28,15 @@ Methods:
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 dtype = torch.float
     
-class SurrogateModel(nn.Module):
-    def __init__(self):
+class SurrogateModel(object):
+    def __init__(self, cfg, neural=False):
         super(SurrogateModel, self).__init__()
 
         self.epochs = 10
-        self.model = None
+        if not neural:
+            self.model = None
+        else:
+            self.model = NP(cfg['hidden_dim'] , cfg['decoder_dim'], cfg['z_samples']).to(device)
         
         ''' alternative (default)
         self.model = SingleTaskGP(X, y)
@@ -43,7 +46,7 @@ class SurrogateModel(nn.Module):
         fit_gpytorch_model(self.mll)
         '''
     # custom fitting
-    def fit(self, train_X, train_Y):
+    def fitGP(self, train_X, train_Y):
         model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
         model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
         mll = ExactMarginalLogLikelihood(model.likelihood, model).to(train_X)
@@ -67,14 +70,13 @@ class SurrogateModel(nn.Module):
         '''
         self.model = model
     
-    # TODO: modify this
+    # TODO: 
     def fitNP(self, train_X, train_Y, cfg):        
-        model = NP(cfg['hidden_dim'] , cfg['decoder_dim'], cfg['z_samples']).to(device)
-        optimizer = optim.Adam(model.parameters(), lr=0.01)
-        
+        self.model.train()
+        optimizer = optim.Adam(self.model.parameters(), lr=0.01)
         for epoch in range(self.epochs):
             optimizer.zero_grad()
-            # split into 
+            # split into context and target
             x_context, y_context, x_target, y_target = random_split_context_target(train_X, train_Y, cfg['num_context'])
             # send to gpu
             x_context = x_context.to(device)
@@ -82,7 +84,7 @@ class SurrogateModel(nn.Module):
             x_target = x_target.to(device)
             y_target = y_target.to(device)
             # forward pass
-            mu, std, z_mean_all, z_std_all, z_mean, z_std = model(x_context, y_context, x_target, y_target)
+            mu, std, z_mean_all, z_std_all, z_mean, z_std = self.model(x_context, y_context, x_target, y_target)
             # loss calculation
             loss = -log_likelihood(mu, std, y_context) + KLD_gaussian(z_mean_all, z_std_all, z_mean, z_std)
             # backprop
@@ -90,7 +92,6 @@ class SurrogateModel(nn.Module):
             training_loss = loss.item()
             optimizer.step()
             print('epoch: {} loss: {}'.format(epoch, training_loss/200))
-        self.model = model
         
     '''
     eval: performs evaluation at test points and return mean and lower, upper bounds
@@ -104,3 +105,20 @@ class SurrogateModel(nn.Module):
                 # upper and lower confidence bounds (2 standard deviations from the mean)
                 lower, upper = posterior.mvn.confidence_region()
             return posterior.mean.cpu().numpy(), (lower.cpu().numpy(), upper.cpu().numpy())
+        
+    # TODO:
+    def evalNP(self, train_X, train_Y, ):
+        mu, std = None, None
+        # random z sample from normal of size (1, z_dim),
+        # get mu, std from x_target and z_sample (xz to y)
+        x_context, y_context, x_target, y_target = random_split_context_target(train_X, train_Y, cfg['num_context'])
+        # send to gpu
+        x_context = x_context.to(device)
+        y_context = y_context.to(device)
+        x_target = x_target.to(device)
+        y_target = y_target.to(device)
+        
+        # forward pass
+        mu, std, _, z_mean_all, z_std_all, z_mean, z_std = self.model(x_context, y_context, x_target, y_target)
+        return mu, std
+        
