@@ -1,4 +1,3 @@
-from numpy.random import normal, random
 from scipy.stats import norm
 from warnings import catch_warnings, simplefilter
 import matplotlib.pyplot as plt
@@ -8,9 +7,6 @@ import numpy as np
 
 # currently only takes into account positions in the x and y direction
 def objective(x, y):
-    # noise=0.1
-    # noise = normal(loc=0, scale=noise)
-    # return (x**2 * sin(5 * pi * x)**6.0) + noise
     return np.linalg.norm((x,y))    
 
 '''

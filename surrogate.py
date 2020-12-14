@@ -36,7 +36,7 @@ class SurrogateModel(object):
         if not neural:
             self.model = None
         else:
-            self.model = NP(cfg['hidden_dim'] , cfg['decoder_dim'], cfg['z_samples']).to(device)
+            self.model = NP(cfg['np']['hidden_dim'] , cfg['np']['decoder_dim'], cfg['np']['z_samples']).to(device)
         
         ''' alternative (default)
         self.model = SingleTaskGP(X, y)
@@ -77,7 +77,7 @@ class SurrogateModel(object):
         for epoch in range(self.epochs):
             optimizer.zero_grad()
             # split into context and target
-            x_context, y_context, x_target, y_target = random_split_context_target(train_X, train_Y, cfg['num_context'])
+            x_context, y_context, x_target, y_target = random_split_context_target(train_X, train_Y, cfg['np']['num_context'])
             # send to gpu
             x_context = x_context.to(device)
             y_context = y_context.to(device)
@@ -111,7 +111,7 @@ class SurrogateModel(object):
         mu, std = None, None
         # random z sample from normal of size (1, z_dim),
         # get mu, std from x_target and z_sample (xz to y)
-        x_context, y_context, x_target, y_target = random_split_context_target(train_X, train_Y, cfg['num_context'])
+        x_context, y_context, x_target, y_target = random_split_context_target(train_X, train_Y, cfg['np']['num_context'])
         # send to gpu
         x_context = x_context.to(device)
         y_context = y_context.to(device)

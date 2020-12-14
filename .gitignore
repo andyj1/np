@@ -1,5 +1,5 @@
-# CSV (large file)
-*.csv
+# MOM4 CSV (large file)
+data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

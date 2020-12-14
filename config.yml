@@ -1,12 +1,24 @@
-num_iter: 100
-num_samples: 50
-mu: 0
-sigma: 5
-dist_mu: 10
-dist_sigma: 10
-angle_mu: 0
-angle_sigma: 40
-num_context: 10
-hidden_dim: 10
-decoder_dim: 15
-z_samples: 20
+data:
+  mu: 0
+  sigma: 5
+  dist_mu: 10
+  dist_sigma: 10
+  angle_mu: 0
+  angle_sigma: 40
+
+train:
+  num_iter: 100
+  num_samples: 50
+
+np:
+  num_context: 10
+  hidden_dim: 10
+  decoder_dim: 15
+  z_samples: 20
+
+MOM4:
+  parttype: R1005
+  xvar_pre: PRE_L
+  yvar_pre: PRE_W
+  xvar_post: POST_L
+  yvar_post: POST_W

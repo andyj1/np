@@ -22,11 +22,10 @@ import numpy as np
 
 from surrogate import SurrogateModel
 from acquisition import AcquisitionFunction
-import bo_utils as boutils # objective
-import np_utils as nputils #
-import viz_utils as vizutils # contourplot, draw_graphs
+import bo_utils # objective
+import np_utils
+import viz_utils # contourplot, draw_graphs
 from dataset import toydataGenerator, reflow_oven
-
 
 # use GPU if available
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -36,7 +35,7 @@ if __name__ == '__main__':
     """ load Pre-AOI and Post-AOI data """
     with open('config.yml', 'r')  as file:
         cfg = yaml.load(file, yaml.FullLoader)
-    x_pre, y_pre, x_post, y_post = toydataGenerator(cfg)
+    x_pre, y_pre, x_post, y_post = toydataGenerator(cfg, toy_boolean=True)
     print('[INFO] pre distance:', np.sqrt(np.sum(x_pre.numpy()**2 + y_pre.numpy()**2)),
           'post distance:', np.sqrt(np.sum(x_post.numpy()**2 + y_post.numpy()**2)))
     
@@ -44,7 +43,7 @@ if __name__ == '__main__':
     _bin = np.linspace(-120,120,60)
     _bins_x, _bins_y = np.meshgrid(_bin, _bin)
     _bins = np.concatenate([_bins_x.reshape(-1,1), _bins_y.reshape(-1,1)],1)
-    vizutils.contourplot(_bin, _bin, 'Train data', x_pre = x_pre, y_pre = y_pre, x_post = x_post, y_post = y_post, cfg = cfg)
+    viz_utils.contourplot(_bin, _bin, 'Train data', x_pre = x_pre, y_pre = y_pre, x_post = x_post, y_post = y_post, cfg = cfg)
     # fig = plt.figure()
     # ax1 = fig.add_subplot(121)
     # simpleplot(x_pre, y_pre, ax1, title='PRE', legend='PRE')
@@ -57,7 +56,7 @@ if __name__ == '__main__':
     
     # objective function
     # - to minimize the distance from the POST to origin toward zero
-    euclidean_dist = [boutils.objective(x1, x2) for x1, x2 in zip(x_post, y_post)]
+    euclidean_dist = [bo_utils.objective(x1, x2) for x1, x2 in zip(x_post, y_post)]
     
     # make into proper dimension for SurrogateModel (e.g. SingleTaskGP)
     input_tensor = torch.cat([x_pre, y_pre], dim=1) # (N,2) dim
@@ -72,7 +71,7 @@ if __name__ == '__main__':
     surrogate.fitNP(input_tensor, target_tensor, cfg)
         
     # training loop
-    NUM_ITER = cfg['num_iter']
+    NUM_ITER = cfg['train']['num_iter']
     candidates_pre, candidates_post = [], []
     for iter in trange(NUM_ITER):
         # surrogate.model.eval() # unncessary for GPyTorch(BoTorch)-based model
@@ -86,7 +85,7 @@ if __name__ == '__main__':
         
         # append to current input and target tensors
         new_input = torch.FloatTensor(candidate)
-        new_target = torch.FloatTensor([boutils.objective(candidate[0][0], candidate[0][1])]).unsqueeze(1)
+        new_target = torch.FloatTensor([bo_utils.objective(candidate[0][0], candidate[0][1])]).unsqueeze(1)
         input_tensor = torch.cat([input_tensor, new_input], dim=0)
         target_tensor = torch.cat([target_tensor, new_target], dim=0)
         print('[INFO] new input shape:',input_tensor.shape, 'newoutput tensor:',target_tensor.shape)
@@ -101,10 +100,10 @@ if __name__ == '__main__':
         
         # for visualization
         # if iter % 5 == 0 and iter > 0:
-        #     vizutils.draw_graphs(input_tensor[:cfg['num_samples']], input_tensor[cfg['num_samples']:],
+        #     viz_utils.draw_graphs(input_tensor[:cfg['num_samples']], input_tensor[cfg['num_samples']:],
         #                 x_post, y_post, cfg, iter)
         #     _dim = int(np.sqrt(_bins.shape[0]))
-        #     vizutils.contourplot(_bin, _bin, 'Results_%d'%iter,
+        #     viz_utils.contourplot(_bin, _bin, 'Results_%d'%iter,
         #                 x_pre = input_tensor[:,0], y_pre = input_tensor[:,1], x_post = x_post, y_post = y_post,
         #                 cfg = cfg)
     
@@ -112,7 +111,7 @@ if __name__ == '__main__':
     print('posterior(',len(posterior),'):', min(bnds[1] - bnds[0]), max(bnds[1] - bnds[0]))
     euclidean_torch = lambda X :torch.sqrt(torch.mean(torch.sum(X**2,1),0))
     _dim = int(np.sqrt(_bins.shape[0]))
-    vizutils.contourplot(_bin, _bin, 'Results_final', x_pre = input_tensor[:,0], y_pre = input_tensor[:,1], x_post = x_post, y_post = y_post,
+    viz_utils.contourplot(_bin, _bin, 'Results_final', x_pre = input_tensor[:,0], y_pre = input_tensor[:,1], x_post = x_post, y_post = y_post,
                 # bnds = (bnds[1] - bnds[0]).reshape(_dim,_dim),
                 cfg = cfg)
 
