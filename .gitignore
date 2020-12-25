@@ -1,9 +1,5 @@
-# MOM4 CSV (large file)
+# omit data files (csv)
 data/
-
-# pickle
-*.pkl
-*.p
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
