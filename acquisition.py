@@ -18,13 +18,11 @@ class AcquisitionFunction(object):
     
     # for GP
     def optimize(self):
-        self.candidate, self.acq_value = optimize_acqf(self.acq_fcn, 
-                                                        bounds=self.bounds, 
-                                                        q=self.q, 
-                                                        num_restarts=self.num_restarts, 
-                                                        raw_samples=self.raw_samples)
-        print('\ncandidate:',self.candidate, 'acq_value:',self.acq_value)
-        return self.candidate, self.acq_value
+        return optimize_acqf(self.acq_fcn, 
+                            bounds=self.bounds, 
+                            q=self.q, 
+                            num_restarts=self.num_restarts, 
+                            raw_samples=self.raw_samples)
 
     # for NP
     # probability of improvement acquisition function

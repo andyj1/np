@@ -1,10 +1,12 @@
 import math
 import os
 
+import joblib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
+from easydict import EasyDict as edict
 
 pd.set_option('display.max_columns', None)
 
@@ -12,89 +14,136 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 dtype = torch.float
 
 '''
-toydataGenerator: generates a toy set of PRE and POST data
+1. define data generators
+    a. toy data: random PRE from config mean and variance
+    b. randomly sampled PRE from MOM4
+2. output reflow oven outputs (POST)
 '''
-def toydataGenerator(cfg, toy_boolean=True):
-    if toy_boolean:
-        x_pre, y_pre = _toydataPRE(cfg)
-    else:
-        x_pre, y_pre = getMOM4data(cfg=cfg, file='MOM4_data.csv')
-    x_post, y_post = reflow_oven(x_pre, y_pre, cfg, toy=toy_boolean)
 
+'''
+getTOYdata(): generates a toy set of PRE and POST data
+'''
+def getTOYdata(cfg):
+    # config
+    mu = cfg['data']['mu']
+    sigma = cfg['data']['sigma']
+    num_samples = cfg['train']['num_samples']    
+
+    # pre data
+    x_pre = torch.normal(mean=mu, std=sigma, size=(num_samples, 1))
+    y_pre = torch.normal(mean=mu, std=sigma, size=(num_samples, 1))
+
+    # reflow oven simulation
+    x_post, y_post = reflow_oven(cfg, x_pre, y_pre)
     assert x_pre.shape == y_pre.shape
     assert x_post.shape == y_post.shape
-    print('[INFO] Generated Data:\n\tPre:', x_pre.shape, y_pre.shape, \
-            '\n\tPost:', x_post.shape, y_post.shape)
+
     return x_pre, y_pre, x_post, y_post
 
-''' private
-_toydataPRE: generates PRE data (either random or according to a defined function)
 '''
-def _toydataPRE(cfg):
-    x_pre = torch.normal(mean=cfg['data']['mu'], std=cfg['data']['sigma'], size=(cfg['train']['num_samples'], 1))
-    y_pre = torch.normal(mean=cfg['data']['mu'], std=cfg['data']['sigma'], size=(cfg['train']['num_samples'], 1))
-    return x_pre, y_pre # size: ()
-
+getMOM4data: returns lists of variables from random samples
 '''
-reflow_oven: function to model reflow oven shift behavior,
-             generates POST data
-'''
-def reflow_oven(x_pre, y_pre, cfg, toy=True):
-    if toy:
-        # generate shifts in x and y direction randomly
-        # - random distance shift
-        x_post = torch.randn_like(x_pre) * cfg['data']['dist_sigma'] + cfg['data']['dist_mu'] # random numbers with mu and sigma
-        y_post = torch.randn_like(y_pre) * cfg['data']['dist_sigma'] + cfg['data']['dist_mu']
-        # - random angular shift
-        offset_angle = 180 + torch.atan2(y_pre, x_pre) / math.pi * 180 + torch.randn_like(x_pre) * cfg['data']['angle_sigma']
-        # offset_angle = torch.randn_like(x_pre) * cfg['data']['angle_sigma'] + cfg['data']['angle_mu']
-
-        # apply shift
-        x_post = x_pre + (x_post * torch.cos(offset_angle * math.pi/180))
-        y_post = y_pre + (y_post * torch.sin(offset_angle * math.pi/180))
-    else:
-        # for MOM4, self alignment result
-        # TODO: 
-        # - try KNN clustering like 고영
-        # - find other way to approximate POST points
-        x_post = torch.randn_like(x_pre) * cfg['data']['dist_sigma'] + cfg['data']['dist_mu']
-        y_post = torch.randn_like(y_pre) * cfg['data']['dist_sigma'] + cfg['data']['dist_mu']
-        offset_angle = 180 + torch.atan2(y_pre, x_pre) / math.pi * 180 + torch.randn_like(x_pre) * cfg['data']['angle_sigma']
-        x_post = x_pre + (x_post * torch.cos(offset_angle * math.pi/180))
-        y_post = y_pre + (y_post * torch.sin(offset_angle * math.pi/180))
-    return x_post, y_post
-
-'''
-getMOM4data: load MOM4 data
-'''
-def getMOM4data(cfg, file='MOM4_data.csv'):
-    base_path = './'
+def getMOM4data(cfg):
+    # config
+    MOM4dict = cfg['MOM4']
+    parttype = MOM4dict['parttype']
+    pre_var1 = MOM4dict['xvar_pre']
+    pre_var2 = MOM4dict['yvar_pre']
+    post_var1 = MOM4dict['xvar_post']
+    post_var2 = MOM4dict['yvar_post']
+    
+    # load dataframe for the selected chip type
+    base_path = './data'
+    file = 'imputed_data.csv'
     data_path = os.path.join(base_path, file)
+    chip_df = getMOM4chipdata(data_path, chiptype=parttype)
+    assert chip_df is not None, 'check chip type' # if none, there is no value for that chip
+    
+    # random pick
+    num_samples = cfg['train']['num_samples']
+    sampled_chip_df = chip_df.sample(n=num_samples)
+    x_pre = sampled_chip_df[pre_var1].to_numpy()
+    y_pre = sampled_chip_df[pre_var2].to_numpy()
+    x_post = sampled_chip_df[post_var1].to_numpy()
+    y_post = sampled_chip_df[post_var2].to_numpy()
 
-    # prepare result directory
-    result_path = os.path.join(base_path, 'result')
-    if not os.path.isdir(result_path):
-        os.makedirs(result_path)
+    x_pre = torch.FloatTensor(x_pre.reshape(-1,1))
+    y_pre = torch.FloatTensor(y_pre.reshape(-1,1))
+    x_post = torch.FloatTensor(x_post.reshape(-1,1))
+    y_post = torch.FloatTensor(y_post.reshape(-1,1))
 
-    # read in data
+    return x_pre, y_pre, x_post, y_post
+
+'''
+getMOM4chipdata: retrieves dataframe for the particular chip
+'''
+def getMOM4chipdata(data_path='./data/MOM4_data.csv', chiptype='R0402'):
+    
+    # load MOM4 dataset
     print('[INFO] Loading %s...' % data_path)
     df = pd.read_csv(data_path, index_col=False).drop(['Unnamed: 0'], axis=1)
     df.reset_index(drop=True, inplace=True)
     assert df.isnull().sum().sum() == 0
-    chip_dataframes = dict()
+
+    # prepare dataframes for each chip
+    # chip_dataframes = edict()
+    # for name, group in df.groupby(['PartType']):
+    #     chip_dataframes[str(name)] = group
+    
+    # return dataframe for the selected chip type
+    chip_df = None
     for name, group in df.groupby(['PartType']):
-        chip_dataframes[str(name)] = group
+        if name == chiptype:
+            chip_df = group
+    return chip_df
 
-    parttype = cfg['MOM4']['R1005']
-    xvar_pre = cfg['MOM4']['PRE_L']
-    yvar_pre = cfg['MOM4']['PRE_W']
-    xvar_post = cfg['MOM4']['POST_L']
-    yvar_post = cfg['MOM4']['POST_W']
+'''
+reflow_oven: function to model reflow oven shift behavior from MultiOutput RF regressor
+'''
+def reflow_oven(x_pre, y_pre, model_path='./RFRegressor/models/regr_multirf.pkl'):
+    # load RF regressor
+    regr_multirf = joblib.load(model_path)
+    # X_test: Nx2 numpy array
+    x_pre = x_pre.reshape(-1,1)
+    y_pre = y_pre.reshape(-1,1)
+    X_test = np.concatenate((x_pre, y_pre), axis=1)
 
-    x_pre = chip_dataframes[parttype][xvar_pre].values[0:10].reshape(-1, 1).astype(dtype)
-    y_pre = chip_dataframes[parttype][yvar_pre].values[0:10].reshape(-1, 1).astype(dtype)
-    x_post = chip_dataframes[parttype][xvar_post].values[0:10].reshape(-1, 1).astype(dtype)
-    y_post = chip_dataframes[parttype][yvar_post].values[0:10].reshape(-1, 1).astype(dtype)
+    # evaluate
+    y_multirf = regr_multirf.predict(X_test)
+    x_post, y_post = y_multirf[:, 0], y_multirf[:, 1]
 
-    # return x_pre, y_pre, x_post, y_post
-    return x_pre, y_pre # determine pre and post relationship
+    return x_post, y_post
+
+
+if __name__=='__main__':
+    import yaml
+    with open('config.yml', 'r')  as file:
+        cfg = yaml.load(file, yaml.FullLoader)
+    x_pre, y_pre, x_post, y_post = getMOM4data(cfg)
+    x_post_est, y_post_est = reflow_oven(x_pre, y_pre)
+    print(x_post_est.shape, y_post_est.shape)
+    print('='*67)
+    print('x_post:\t\t',x_post)
+    print('x_post_est:\t',x_post_est)
+    print('y_post:\t\t',y_post)
+    print('y_post_est:\t',y_post_est)
+    print()
+
+    with np.printoptions(precision=3, suppress=True):
+        print('x diff:', (x_post - x_post_est))
+        print('y diff:', (y_post - y_post_est))
+    
+    plt.figure()
+    s = 50
+    a = 0.4
+    plt.scatter(x_post, y_post, edgecolor='k',
+                c="navy", s=s, marker="s", alpha=a, label="Actual")
+    plt.scatter(x_post_est, y_post_est, edgecolor='k',
+                c="c", s=s, marker="^", alpha=a, label='Estimate')
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.title("Multi-Output RF")
+    plt.legend()
+    plt.show()
+
+

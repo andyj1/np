@@ -7,8 +7,8 @@ data:
   angle_sigma: 40
 
 train:
-  num_iter: 100
-  num_samples: 50
+  num_epoch: 150
+  num_samples: 100
 
 np:
   num_context: 10
@@ -18,7 +18,7 @@ np:
 
 MOM4:
   parttype: R1005
-  xvar_pre: PRE_L
-  yvar_pre: PRE_W
-  xvar_post: POST_L
-  yvar_post: POST_W
+  xvar_pre: PRE_X
+  yvar_pre: PRE_Y
+  xvar_post: POST_X
+  yvar_post: POST_Y

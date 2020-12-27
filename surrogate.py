@@ -29,14 +29,14 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 dtype = torch.float
     
 class SurrogateModel(object):
-    def __init__(self, cfg, neural=False):
+    def __init__(self, cfg, epochs=100):
         super(SurrogateModel, self).__init__()
 
-        self.epochs = 10
-        if not neural:
-            self.model = None
-        else:
-            self.model = NP(cfg['np']['hidden_dim'] , cfg['np']['decoder_dim'], cfg['np']['z_samples']).to(device)
+        self.epochs = epochs
+        # if not neural:
+        self.model = None
+        # else:
+        #     self.model = NP(cfg['np']['hidden_dim'] , cfg['np']['decoder_dim'], cfg['np']['z_samples']).to(device)
         
         ''' alternative (default)
         self.model = SingleTaskGP(X, y)
@@ -47,27 +47,32 @@ class SurrogateModel(object):
         '''
     # custom fitting
     def fitGP(self, train_X, train_Y):
+        # initialize model
         model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
         model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
-        mll = ExactMarginalLogLikelihood(model.likelihood, model).to(train_X)
-        mll.to(dtype)
-        fit_gpytorch_model(mll)
-        '''
-        model.train() # set train mode
-        optimizer = SGD([{'params': model.parameters()}], lr=0.1)        
-        t = trange(self.epochs, desc='', leave=False)
-        for epoch in t:
-            optimizer.zero_grad()
-            output = model(train_X)
-            loss = -mll(output, model.train_targets)
-            loss.backward()
-            # print(f"Epoch {epoch+1:>3}/{self.epochs} - Loss: {loss.item():>4.3f} "
-                #   f"lengthscale: {model.covar_module.base_kernel.lengthscale.item():>4.3f} " f"noise: {model.likelihood.noise.item():>4.3f}")
-            optimizer.step()
+        mll = ExactMarginalLogLikelihood(likelihood=model.likelihood, model=model)
+        mll.to(train_X)
+        mll.to(device)
+
+        # default wrapper tor training
+        fit_gpytorch_model(mll).cpu()
+
+        # the following code works, but has multiple lengthscale outputs (can't observe lengthscale)
+        # model.train() # set train mode
+        # optimizer = SGD([{'params': model.parameters()}], lr=0.1)        
+        # t = trange(self.epochs, desc='', leave=False)
+        # for epoch in t:
+        #     t.set_description("[Train] Epoch %i / %i\t" % (epoch, self.epochs))
+
+        #     optimizer.zero_grad()
+        #     output = model(train_X)
+        #     loss = -mll(output, model.train_targets)
+        #     loss.backward()
+        #     print(f"Epoch {epoch+1:>3}/{self.epochs} - Loss: {loss.item():>4.3f}"\
+        #         f" - noise: {model.likelihood.noise.item():>4.3f}")
+        #     # print(f"lengthscale: {model.covar_module.base_kernel.lengthscale:>4.3f}")
+        #     optimizer.step()
             
-            # t.set_description("[Train] Epoch %i / %i\t" % (epoch, self.epochs))
-            # t.refresh()
-        '''
         self.model = model
     
     # TODO: 

@@ -1,72 +1,80 @@
-import math, os, sys
+import math
+import os
+import sys
 
+import numpy as np
+import torch
 import yaml
 from tqdm import trange
-import torch
-import numpy as np
 
-from surrogate import SurrogateModel
-from acquisition import AcquisitionFunction
-import bo_utils # objective
+import bo_utils
 import np_utils
-import viz_utils # contourplot, draw_graphs
-from dataset import toydataGenerator, reflow_oven
+import viz_utils  # contourplot, draw_graphs
+from acquisition import AcquisitionFunction
+from dataset import getMOM4data, getTOYdata, reflow_oven
+from surrogate import SurrogateModel
+import time
 
 # use GPU if available
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 dtype = torch.float
+obj = bo_utils.objective
+
+infinity = math.inf
 
 if __name__ == '__main__':
-    """ load Pre-AOI and Post-AOI data """
+    print('='*10,'test','='*10)
+    print('Loading data...')
+
     with open('config.yml', 'r')  as file:
         cfg = yaml.load(file, yaml.FullLoader)
-    x_pre, y_pre, x_post, y_post = toydataGenerator(cfg, toy_boolean=True)
-    # print('[INFO] pre distance:', np.sqrt(np.sum(x_pre.numpy()**2 + y_pre.numpy()**2)),
-    #       'post distance:', np.sqrt(np.sum(x_post.numpy()**2 + y_post.numpy()**2)))
+    x_pre, y_pre, x_post, y_post = getMOM4data(cfg)
     
-    """ plot data """
-    _bin = np.linspace(-120,120,60)
-    _bins_x, _bins_y = np.meshgrid(_bin, _bin)
-    _bins = np.concatenate([_bins_x.reshape(-1,1), _bins_y.reshape(-1,1)],1)
-    viz_utils.contourplot(_bin, _bin, 'Train data', x_pre = x_pre, y_pre = y_pre, x_post = x_post, y_post = y_post, cfg = cfg)
+    ''' objective function: to minimize the distance from the POST to origin toward zero '''
+    euclidean_dist = [-obj(x1, x2) for x1, x2 in zip(x_post, y_post)]
     
-    ''' objective function: to minimize the distance from the POST to origin toward zero
-    '''
-    euclidean_dist = [bo_utils.objective(x1, x2) for x1, x2 in zip(x_post, y_post)]
+    NUM_EPOCH = cfg['train']['num_epoch']
+    ''' make into proper dimension for SurrogateModel (e.g., SingleTaskGP) '''
+    input_tensor = torch.cat([x_pre, y_pre], dim=1)                 # (N,2) dim
+    target_tensor = torch.FloatTensor(euclidean_dist).unsqueeze(1)  # (N,1) dim
+
+    # initialize model and likelihood
+    surrogate = SurrogateModel(cfg=cfg, epochs=NUM_EPOCH)
+    start = time.time()
+    surrogate.fitGP(input_tensor, target_tensor)
+    print(f'[INFO] initial train time: {time.time()-start:.3f} sec')
     
-    ''' make into proper dimension for SurrogateModel (e.g. SingleTaskGP) '''
-    input_tensor = torch.cat([x_pre, y_pre], dim=1) # (N,2) dim
-    target_tensor = torch.FloatTensor(euclidean_dist).unsqueeze(1) # (N,1) dim
-    
-    # initialize and fit model
-    surrogate = SurrogateModel(cfg=cfg, neural=False)
-    # surrogate.fitGP(input_tensor, target_tensor)
-    # for NP model, set neural to True
-    # surrogate.model.train() # unncessary for GPyTorch(BoTorch)-based model
-    surrogate.fitNP(input_tensor, target_tensor, cfg)
-        
     # training loop
-    NUM_ITER = cfg['train']['num_iter']
     candidates_pre, candidates_post = [], []
-    for iter in trange(NUM_ITER):
-        # surrogate.model.eval() # unncessary for GPyTorch(BoTorch)-based model
-        
-        # optimize acquisition function -> candidate x, y
+    t = trange(NUM_EPOCH)
+    for epoch in t:
+
+        # optimize acquisition functions and get new observations
         acq_fcn = AcquisitionFunction(model=surrogate.model, beta=0.1)
+        start = time.time()
         candidate, acq_value = acq_fcn.optimize()
-        
+                
         # actual values from the objective, compute the distance
-        x_new_post, y_new_post = reflow_oven(candidate[0][0], candidate[0][1], cfg, toy=True)
+        x_new_pre, y_new_pre = candidate[0] # unravel tensor to numpy floats
+        x_new_post, y_new_post = reflow_oven(x_new_pre, y_new_pre)
+
+        pre_dist = obj(x_new_pre, y_new_pre)
+        post_dist = obj(x_new_post, y_new_post)
+        # append distance measures
+        candidates_pre.append(pre_dist)
+        candidates_post.append(post_dist)
         
-        # append to current input and target tensors
-        new_input = torch.FloatTensor(candidate)
-        new_target = torch.FloatTensor([bo_utils.objective(candidate[0][0], candidate[0][1])]).unsqueeze(1)
-        input_tensor = torch.cat([input_tensor, new_input], dim=0)
+        # update input and target tensors
+        input_tensor = torch.cat([input_tensor, candidate], dim=0)
+        # since mll is maximized, purposely negate objective value
+        new_target = torch.from_numpy(np.array([-post_dist])).unsqueeze(1)
         target_tensor = torch.cat([target_tensor, new_target], dim=0)
-        print('[INFO] new input shape:',input_tensor.shape, 'newoutput tensor:',target_tensor.shape)
         
-        # re-train
-        surrogate.fit(input_tensor, target_tensor)
+        t.set_description(desc=f'[INFO] Epoch {epoch+1} / train time: {time.time()-start:.3f} sec, pre_dist: {pre_dist:.3f}, post_dist: {post_dist:.3f}', refresh=False)
+
+        # re-initialize the models so they are ready for fitting on next iteration
+        # and re-train
+        surrogate.fitGP(input_tensor, target_tensor)
         
         # eval
         # x = input_tensor
@@ -82,18 +90,20 @@ if __name__ == '__main__':
         #                 x_pre = input_tensor[:,0], y_pre = input_tensor[:,1], x_post = x_post, y_post = y_post,
         #                 cfg = cfg)
     
-    posterior, bnds = surrogate.eval(torch.tensor(_bins).to(torch.float32))
-    print('posterior(',len(posterior),'):', min(bnds[1] - bnds[0]), max(bnds[1] - bnds[0]))
-    euclidean_torch = lambda X :torch.sqrt(torch.mean(torch.sum(X**2,1),0))
-    _dim = int(np.sqrt(_bins.shape[0]))
-    viz_utils.contourplot(_bin, _bin, 'Results_final', x_pre = input_tensor[:,0], y_pre = input_tensor[:,1], x_post = x_post, y_post = y_post,
-                # bnds = (bnds[1] - bnds[0]).reshape(_dim,_dim),
-                cfg = cfg)
+    for pre, post in zip(candidates_pre, candidates_post):
+        print(f'Distance: {pre} --> {post}')
+    # posterior, bnds = surrogate.eval(torch.tensor(_bins).to(torch.float32))
+    # print('posterior(',len(posterior),'):', min(bnds[1] - bnds[0]), max(bnds[1] - bnds[0]))
+    # euclidean_torch = lambda X :torch.sqrt(torch.mean(torch.sum(X**2,1),0))
+    # _dim = int(np.sqrt(_bins.shape[0]))
+    # viz_utils.contourplot(_bin, _bin, 'Results_final', x_pre = input_tensor[:,0], y_pre = input_tensor[:,1], x_post = x_post, y_post = y_post,
+    #             # bnds = (bnds[1] - bnds[0]).reshape(_dim,_dim),
+    #             cfg = cfg)
 
-    train_data, BO_data = input_tensor[:cfg['num_samples']], input_tensor[cfg['num_samples']:]
-    print("Train data mean, std : ", torch.mean(train_data, 0), torch.std(train_data, 0))
-    print("Train data distance, loss : ", euclidean_torch(train_data), torch.mean(target_tensor[:cfg['num_samples']]))
-    print("BO data mean, std : ", torch.mean(BO_data, 0), torch.std(BO_data, 0))
-    print("BO data distance, loss : ", euclidean_torch(BO_data), torch.mean(target_tensor[cfg['num_samples']:]))
-    print('\n[INFO] Finished.')
+    # train_data, BO_data = input_tensor[cfg['train']['num_samples']], input_tensor[cfg['train']['num_samples']:]
+    # print("Train data mean, std : ", torch.mean(train_data, 0), torch.std(train_data, 0))
+    # print("Train data distance, loss : ", euclidean_torch(train_data), torch.mean(target_tensor[:cfg['num_samples']]))
+    # print("BO data mean, std : ", torch.mean(BO_data, 0), torch.std(BO_data, 0))
+    # print("BO data distance, loss : ", euclidean_torch(BO_data), torch.mean(target_tensor[cfg['num_samples']:]))
+    # print('\n[INFO] Finished.')
         
