@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import torch
 from easydict import EasyDict as edict
+from tqdm import tqdm
 
 pd.set_option('display.max_columns', None)
 
@@ -41,7 +42,7 @@ def getTOYdata(cfg):
     return x_pre, y_pre, x_post, y_post
 
 '''
-getMOM4data: returns lists of variables from random samples
+getMOM4data: returns lists of variables from random samples (count: num_samples)
 '''
 def getMOM4data(cfg):
     # config
@@ -95,6 +96,30 @@ def getMOM4chipdata(data_path='./data/MOM4_data.csv', chiptype='R0402'):
     for name, group in df.groupby(['PartType']):
         if name == chiptype:
             chip_df = group
+            break
+    
+    # convert 90 deg to 0
+    t = tqdm(chip_df.iterrows(), total=len(chip_df))
+    for idx, row in t:    
+        spi_x_avg, spi_y_avg = row[['SPI_X_AVG','SPI_Y_AVG']]
+        pre_x, pre_y, post_x, post_y = row[['PRE_X','PRE_Y','POST_X','POST_Y']]
+        orientation = row['Orient.']
+        
+        # rotate 90 to 0:
+        #   : slow but this is done in place of grouping again by orientation and mapping values
+        if orientation == 90:
+            pre_x, pre_y = switchOrient(pre_x, pre_y)
+            post_x, post_y = switchOrient(pre_x, pre_y)
+            spi_x_avg, spi_y_avg = switchOrient(spi_x_avg, spi_y_avg)
+            # update
+            chip_df.loc[idx, 'PRE_X'] = pre_x
+            chip_df.loc[idx, 'PRE_Y'] = pre_y
+            chip_df.loc[idx, 'POST_X'] = post_x
+            chip_df.loc[idx, 'POST_Y'] = post_y
+            chip_df.loc[idx, 'SPI_X_AVG'] = spi_x_avg
+            chip_df.loc[idx, 'SPI_Y_AVG'] = spi_y_avg
+            t.set_description(f'Switching 90 to 0 for index: {idx}')
+            
     return chip_df
 
 '''
@@ -114,7 +139,7 @@ def reflow_oven(x_pre, y_pre, model_path='./RFRegressor/models/regr_multirf.pkl'
 
     return x_post, y_post
 
-
+# test standalone
 if __name__=='__main__':
     import yaml
     with open('config.yml', 'r')  as file:
@@ -146,4 +171,10 @@ if __name__=='__main__':
     plt.legend()
     plt.show()
 
+
+# switch 90 data to 0 data
+def switchOrient(x90, y90):
+    y0 = float(x90)
+    x0 = float(-y90)
+    return x0, y0 
 

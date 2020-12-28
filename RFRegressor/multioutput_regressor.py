@@ -9,14 +9,15 @@ import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.multioutput import MultiOutputRegressor
+import torch
 
 pd.set_option('display.max_columns', None)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # config
-train = False
+train = True
 load = not train
-plot = True
+plot = False
 max_depth = 30
 num_predictors = 100    # needs to be INTEGER
 TEST_SIZE = 100         # test sample size after split

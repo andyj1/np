@@ -14,6 +14,7 @@ from acquisition import AcquisitionFunction
 from dataset import getMOM4data, getTOYdata, reflow_oven
 from surrogate import SurrogateModel
 import time
+import matplotlib.pyplot as plt
 
 # use GPU if available
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -39,18 +40,20 @@ if __name__ == '__main__':
     target_tensor = torch.FloatTensor(euclidean_dist).unsqueeze(1)  # (N,1) dim
 
     # initialize model and likelihood
-    surrogate = SurrogateModel(cfg=cfg, epochs=NUM_EPOCH)
+    surrogate = SurrogateModel(epochs=NUM_EPOCH)
     start = time.time()
     surrogate.fitGP(input_tensor, target_tensor)
     print(f'[INFO] initial train time: {time.time()-start:.3f} sec')
     
     # training loop
     candidates_pre, candidates_post = [], []
+    fig = plt.figure()
+    ax = fig.add_subplot()
     t = trange(NUM_EPOCH)
     for epoch in t:
 
         # optimize acquisition functions and get new observations
-        acq_fcn = AcquisitionFunction(model=surrogate.model, beta=0.1)
+        acq_fcn = AcquisitionFunction(cfg=cfg, model=surrogate.model)
         start = time.time()
         candidate, acq_value = acq_fcn.optimize()
                 
@@ -89,9 +92,17 @@ if __name__ == '__main__':
         #     viz_utils.contourplot(_bin, _bin, 'Results_%d'%iter,
         #                 x_pre = input_tensor[:,0], y_pre = input_tensor[:,1], x_post = x_post, y_post = y_post,
         #                 cfg = cfg)
+
+        
+        ax.scatter(x_new_pre, y_new_pre, s=10, alpha=(epoch+1)*1/NUM_EPOCH, color='r')
+        ax.scatter(x_new_post, y_new_post, s=10, alpha=(epoch+1)*1/NUM_EPOCH, color='b')
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_title('Pre -> Post')
+    fig.savefig('img.png')
     
     for pre, post in zip(candidates_pre, candidates_post):
-        print(f'Distance: {pre} --> {post}')
+        print(f'Distance: {pre:.3f} -> {post:.3f}')
     # posterior, bnds = surrogate.eval(torch.tensor(_bins).to(torch.float32))
     # print('posterior(',len(posterior),'):', min(bnds[1] - bnds[0]), max(bnds[1] - bnds[0]))
     # euclidean_torch = lambda X :torch.sqrt(torch.mean(torch.sum(X**2,1),0))

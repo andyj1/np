@@ -4,6 +4,8 @@ from botorch.models import SingleTaskGP
 from gpytorch.constraints.constraints import GreaterThan
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from botorch.fit import fit_gpytorch_model
+from botorch.optim.fit import fit_gpytorch_torch
+
 from torch.optim import SGD
 import torch.optim as optim
 from tqdm import trange
@@ -12,24 +14,12 @@ import sys
 from NPModel import NP
 from np_utils import log_likelihood, KLD_gaussian, random_split_context_target
 
-''' class for surrogate model
-Methods:
-    1) fit
-        input: vector of X's (multi-dim), vector of Y (single-dim)
-        ->
-        output: trained model
-    2) eval
-        input: sample point x
-        ->
-        output: mean and variance at x
-'''
-
 # use GPU if available
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 dtype = torch.float
     
 class SurrogateModel(object):
-    def __init__(self, cfg, epochs=100):
+    def __init__(self, epochs=100):
         super(SurrogateModel, self).__init__()
 
         self.epochs = epochs
@@ -55,7 +45,12 @@ class SurrogateModel(object):
         mll.to(device)
 
         # default wrapper tor training
-        fit_gpytorch_model(mll).cpu()
+        # fit_gpytorch_model(mll)
+        mll.train()
+        mll, info_dict = fit_gpytorch_torch(mll)
+        # mll.eval()
+        
+        # fit_gpytorch_model(mll, optimizer=fit_gpytorch_torch)
 
         # the following code works, but has multiple lengthscale outputs (can't observe lengthscale)
         # model.train() # set train mode
@@ -73,7 +68,7 @@ class SurrogateModel(object):
         #     # print(f"lengthscale: {model.covar_module.base_kernel.lengthscale:>4.3f}")
         #     optimizer.step()
             
-        self.model = model
+        self.model = model.cpu()
     
     # TODO: 
     def fitNP(self, train_X, train_Y, cfg):        

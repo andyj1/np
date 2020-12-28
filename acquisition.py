@@ -1,18 +1,37 @@
 import numpy as np
 import torch
-from botorch.acquisition.analytic import UpperConfidenceBound
+from botorch.acquisition import qExpectedImprovement
+from botorch.acquisition.analytic import (ExpectedImprovement,
+                                          UpperConfidenceBound)
 from botorch.optim import optimize_acqf
+from botorch.sampling import SobolQMCNormalSampler
 
 
 class AcquisitionFunction(object):
-    def __init__(self, model, beta):
-        self.beta = beta
-        self.acq_fcn = UpperConfidenceBound(model, beta=beta)
+    def __init__(self, cfg, model):
+        option = cfg['acquisition']['option']
+        if option == 1:
+            # 1. UCF
+            self.beta = cfg['acquisition']['beta']
+            self.acq_fcn = UpperConfidenceBound(model, beta=self.beta)
+        elif option == 2:
+            # 2. EI
+            self.best_f = cfg['acquisition']['best_f']
+            self.acq_fcn = ExpectedImprovement(model, best_f=self.best_f)
+        elif option == 3:
+            # 3. MC-based qEI 
+            self.best_f = cfg['acquisition']['best_f']
+            sampler = SobolQMCNormalSampler(num_samples=500, seed=0, resample=False)        
+            self.acq_fcn = qExpectedImprovement(
+                model, best_f=self.best_f, sampler=sampler
+            )
+        
         dim = 2
-        self.bounds = torch.stack([-torch.ones(dim)*120, torch.ones(dim)*120])
-        self.q = 1
-        self.num_restarts = 10
-        self.raw_samples = 40
+        bound_limit = cfg['acquisition']['bounds']
+        self.bounds = torch.stack([-torch.ones(dim) * bound_limit, torch.ones(dim) * bound_limit])
+        self.q = cfg['acquisition']['q']
+        self.num_restarts = cfg['acquisition']['num_restarts']
+        self.raw_samples = cfg['acquisition']['raw_samples']
         self.candidate = None
         self.acq_value = None
     
