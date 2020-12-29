@@ -1,5 +1,10 @@
 # omit data files (csv)
 data/
+models/
+RFRegressor/models/
+# omit pickles
+*.pkl
+*.p
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

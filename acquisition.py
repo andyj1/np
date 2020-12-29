@@ -5,26 +5,15 @@ from botorch.acquisition.analytic import (ExpectedImprovement,
                                           UpperConfidenceBound)
 from botorch.optim import optimize_acqf
 from botorch.sampling import SobolQMCNormalSampler
+from botorch.sampling import IIDNormalSampler
 
 
 class AcquisitionFunction(object):
-    def __init__(self, cfg, model):
+    def __init__(self, cfg, model, beta=None, best_f=None):
         option = cfg['acquisition']['option']
-        if option == 1:
-            # 1. UCF
-            self.beta = cfg['acquisition']['beta']
-            self.acq_fcn = UpperConfidenceBound(model, beta=self.beta)
-        elif option == 2:
-            # 2. EI
-            self.best_f = cfg['acquisition']['best_f']
-            self.acq_fcn = ExpectedImprovement(model, best_f=self.best_f)
-        elif option == 3:
-            # 3. MC-based qEI 
-            self.best_f = cfg['acquisition']['best_f']
-            sampler = SobolQMCNormalSampler(num_samples=500, seed=0, resample=False)        
-            self.acq_fcn = qExpectedImprovement(
-                model, best_f=self.best_f, sampler=sampler
-            )
+        
+        self.beta = 0 if beta is None else cfg['acquisition']['beta']
+        self.best_f = 0 if best_f is None else cfg['acquisition']['best_f']
         
         dim = 2
         bound_limit = cfg['acquisition']['bounds']
@@ -34,7 +23,27 @@ class AcquisitionFunction(object):
         self.raw_samples = cfg['acquisition']['raw_samples']
         self.candidate = None
         self.acq_value = None
-    
+        
+        if option == 1:
+            # 1. UCF
+            self.acq_fcn = UpperConfidenceBound(model, beta=self.beta)
+        elif option == 2:
+            # 2. EI
+            self.acq_fcn = ExpectedImprovement(model, best_f=self.best_f)
+        elif option == 3:
+            # 3. Sobol Quasi-Monte Carlo Normal sampler-based qEI 
+            sampler = SobolQMCNormalSampler(num_samples=100, seed=0, resample=False)        
+            self.acq_fcn = qExpectedImprovement(
+                model, best_f=self.best_f, sampler=sampler
+            )
+        elif option == 4:
+            # 4. IID Normal sampler-based qEI 
+            sampler = IIDNormalSampler(num_samples=100, resample=True)     
+            self.acq_fcn = qExpectedImprovement(
+                # set best_f to train_Y.max()
+                model, best_f=self.best_f, sampler=sampler
+            )
+        
     # for GP
     def optimize(self):
         return optimize_acqf(self.acq_fcn, 

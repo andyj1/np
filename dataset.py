@@ -35,7 +35,8 @@ def getTOYdata(cfg):
     y_pre = torch.normal(mean=mu, std=sigma, size=(num_samples, 1))
 
     # reflow oven simulation
-    x_post, y_post = reflow_oven(cfg, x_pre, y_pre)
+    
+    x_post, y_post = reflow_oven(x_pre, y_pre)
     assert x_pre.shape == y_pre.shape
     assert x_post.shape == y_post.shape
 
@@ -53,6 +54,7 @@ def getMOM4data(cfg):
     post_var1 = MOM4dict['xvar_post']
     post_var2 = MOM4dict['yvar_post']
     
+    
     # load dataframe for the selected chip type
     base_path = './data'
     file = 'imputed_data.csv'
@@ -62,6 +64,7 @@ def getMOM4data(cfg):
     
     # random pick
     num_samples = cfg['train']['num_samples']
+    
     sampled_chip_df = chip_df.sample(n=num_samples)
     x_pre = sampled_chip_df[pre_var1].to_numpy()
     y_pre = sampled_chip_df[pre_var2].to_numpy()
@@ -78,7 +81,7 @@ def getMOM4data(cfg):
 '''
 getMOM4chipdata: retrieves dataframe for the particular chip
 '''
-def getMOM4chipdata(data_path='./data/MOM4_data.csv', chiptype='R0402'):
+def getMOM4chipdata(data_path='./data/MOM4_data.csv', chiptype='R1005'):
     
     # load MOM4 dataset
     print('[INFO] Loading %s...' % data_path)
