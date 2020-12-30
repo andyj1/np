@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import yaml
 from tqdm import trange
+import gc
 
 import bo_utils
 import np_utils
@@ -49,13 +50,15 @@ if __name__ == '__main__':
     target_tensor = torch.FloatTensor(euclidean_dist).unsqueeze(1)  # (N,1) dim
     
     # initialize model and likelihood
-    surrogate = SurrogateModel(epochs=NUM_EPOCH)
+    EPOCH_FROM = 0
+    surrogate = SurrogateModel(input_tensor, target_tensor, epochs=NUM_EPOCH)
     if args.load is not None:
         checkpoint = torch.load(args.load)
-        surrogate.model.load_state_dict(checkpoint['model_dict'])
+        surrogate.model.load_state_dict(checkpoint['state_dict'])
         surrogate.optimizer.load_state_dict(checkpoint['optimizer'])
+        EPOCH_FROM = int(args.load.split('.pt')[0][-1])
+        print('Loading checkpoint from epoch',EPOCH_FROM)
     start = time.time()
-    
     
     surrogate.model.to(device)
     input_tensor =input_tensor.to(device)
@@ -64,18 +67,25 @@ if __name__ == '__main__':
     # print(input_tensor.is_cuda)
     # print(target_tensor.is_cuda)
     
-    surrogate.fitGP(input_tensor, target_tensor, epoch=0)
+    surrogate.fitGP(input_tensor, target_tensor, cfg, toy_bool=args.toy, epoch=-1)
     print(f'[INFO] initial train time: {time.time()-start:.3f} sec')
     
     torch.backends.cudnn.benchmark = True
-
+    # make folders for checkpoints
+    os.makedirs('ckpts/R0402', exist_ok=True, mode=0o755)
+    os.makedirs('ckpts/R0603', exist_ok=True, mode=0o755)
+    os.makedirs('ckpts/R1005', exist_ok=True, mode=0o755)
+    os.makedirs('ckpts/toy', exist_ok=True, mode=0o755)
+    
     # training loop
     fig = plt.figure()
     ax = fig.add_subplot()
     candidates_pre, candidates_post = [], []
-    t = trange(NUM_EPOCH)
+    t = trange(EPOCH_FROM+1, NUM_EPOCH, 1)
     for epoch in t:
-
+        gc.collect()
+        torch.cuda.empty_cache()
+        
         # optimize acquisition functions and get new observations
         acq_fcn = AcquisitionFunction(cfg=cfg, model=surrogate.model)
         start = time.time()
@@ -103,11 +113,11 @@ if __name__ == '__main__':
         # input_tensor =input_tensor.to(device)
         # target_tensor = target_tensor.to(device)
         
-        t.set_description(desc=f'[INFO] Epoch {epoch+1} / train time: {time.time()-start:.3f} sec, pre_dist: {pre_dist:.3f}, post_dist: {post_dist:.3f}', refresh=False)
+        t.set_description(desc=f'[INFO] Epoch {epoch} / train time: {time.time()-start:.3f} sec, pre_dist: {pre_dist:.3f}, post_dist: {post_dist:.3f}', refresh=False)
 
         # re-initialize the models so they are ready for fitting on next iteration
         # and re-train
-        surrogate.fitGP(input_tensor, target_tensor, epoch=epoch)
+        surrogate.fitGP(input_tensor, target_tensor, cfg, toy_bool=args.toy, epoch=epoch)
         
         # eval
         # x = input_tensor

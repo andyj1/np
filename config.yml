@@ -16,7 +16,7 @@ acquisition:
   best_f: 0.1
 
 train:
-  num_epoch: 2
+  num_epoch: 10
   num_samples: 10
 
 np:
@@ -26,7 +26,7 @@ np:
   z_samples: 20
 
 MOM4:
-  parttype: R1005
+  parttype: R0402
   xvar_pre: PRE_X
   yvar_pre: PRE_Y
   xvar_post: POST_X

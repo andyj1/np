@@ -148,7 +148,7 @@ def fit_gpytorch_torch(
     stopping_criterion = ExpMAStoppingCriterion(
         **_filter_kwargs(ExpMAStoppingCriterion, **optim_options)
     )
-    DISPLAY_FOR_EVERY = 100
+    DISPLAY_FOR_EVERY = 10
     train_inputs, train_targets = mll.model.train_inputs, mll.model.train_targets
     while not stop:
         optimizer.zero_grad()

@@ -18,16 +18,25 @@ from np_utils import log_likelihood, KLD_gaussian, random_split_context_target
 
     
 class SurrogateModel(object):
-    def __init__(self, epochs=100):
+    def __init__(self, train_X, train_Y, epochs=100):
         super(SurrogateModel, self).__init__()
         
         self.epochs = epochs
         # if not neural:
-        self.model = SingleTaskGP(torch.empty(1,1), torch.empty(1,1))
+        
+        # intiialize model for nominal purposes only
+        self.model = SingleTaskGP(train_X=train_X, train_Y=train_Y)        
+        self.model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
+        mll = ExactMarginalLogLikelihood(likelihood=self.model.likelihood, model=self.model)
+        mll.to(train_X)
+        
         # else:
         #     self.model = NP(cfg['np']['hidden_dim'] , cfg['np']['decoder_dim'], cfg['np']['z_samples']).to(device)
         
-        self.optimizer = None
+        # optimizer_cls = optim.AdamW
+        # optimizer_cls = optim.SparseAdam # doesn't support dense gradients
+        self.optimizer_cls = optim.Adamax
+        self.optimizer = self.optimizer_cls(self.model.parameters())
         
         # use GPU if available
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -40,7 +49,7 @@ class SurrogateModel(object):
         fit_gpytorch_model(self.mll)
         '''
     # custom fitting
-    def fitGP(self, train_X, train_Y, epoch=0):
+    def fitGP(self, train_X, train_Y, cfg, toy_bool=False, epoch=0):
         # initialize model
         model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
         model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
@@ -54,16 +63,16 @@ class SurrogateModel(object):
         
         # customize optimizer in 'fit.py' in fit_gpytorch_torch()
         # optimizer need not have a closure
-        optimizer_options = {'lr': 0.05, "maxiter": 10, "disp": True, }
-        # optimizer_cls = optim.AdamW
-        optimizer_cls = optim.Adamax
-        # optimizer_cls = optim.SparseAdam # doesn't support dense gradients
+        optimizer_options = {'lr': 0.05, "maxiter": 100, "disp": True, }
         
-        torch.cuda.empty_cache()
+        ''' define custom optimizer using optimizer class: "self.optimizer_cls" '''
+        # self.optimizer = self.optimizer_cls(model.parameters())
+        self.optimizer = None # if None, defines a new optimizer within fit_gpytorch_torch
         
         mll, info_dict, self.optimizer = fit_gpytorch_torch(mll=mll, \
-                                            optimizer_cls=optimizer_cls, \
-                                            options=optimizer_options, approx_mll=True, \
+                                            optimizer_cls=self.optimizer_cls, \
+                                            options=optimizer_options, \
+                                            approx_mll=True, \
                                             custom_optimizer=self.optimizer, \
                                             device=self.device)
         # mll.eval()
@@ -80,11 +89,13 @@ class SurrogateModel(object):
         #     optimizer.zero_grad()fopt()
         loss = info_dict['fopt']
         self.model = mll.model
-        if epoch > 0: 
-            checkpoint = {  'state_dict': self.model.state_dict(),
-                            'optimizer' : self.optimizer.state_dict()}
-
-            torch.save(checkpoint, f'models/checkpoint_{epoch}.pt')
+        if epoch >= 0: 
+            checkpoint = {'state_dict': self.model.state_dict(),
+                          'optimizer' : self.optimizer.state_dict()}
+            if toy_bool:
+                torch.save(checkpoint, f"ckpts/toy/checkpoint_{epoch}.pt")
+            else:
+                torch.save(checkpoint, f"ckpts/{cfg['MOM4']['parttype']}/checkpoint_{epoch}.pt")
     
     # TODO: 
     def fitNP(self, train_X, train_Y, cfg):        
