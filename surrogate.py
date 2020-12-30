@@ -5,7 +5,7 @@ from gpytorch.constraints.constraints import GreaterThan
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from botorch.fit import fit_gpytorch_model
 # from botorch.optim.fit import fit_gpytorch_torch
-from .botorchoptimfit import fit_gpytorch_torch
+from botorchoptimfit.fit import fit_gpytorch_torch
 
 from torch.optim import SGD
 import torch.optim as optim
@@ -16,9 +16,6 @@ from NPModel import NP
 from np_utils import log_likelihood, KLD_gaussian, random_split_context_target
 
 
-# use GPU if available
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-dtype = torch.float
     
 class SurrogateModel(object):
     def __init__(self, epochs=100):
@@ -31,6 +28,10 @@ class SurrogateModel(object):
         #     self.model = NP(cfg['np']['hidden_dim'] , cfg['np']['decoder_dim'], cfg['np']['z_samples']).to(device)
         
         self.optimizer = None
+        
+        # use GPU if available
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.dtype = torch.float
         ''' alternative (default)
         self.model = SingleTaskGP(X, y)
         self.mll = ExactMarginalLogLikelihood(likelihood=self.model.likelihood, model=self.model)
@@ -45,7 +46,7 @@ class SurrogateModel(object):
         model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
         mll = ExactMarginalLogLikelihood(likelihood=model.likelihood, model=model)
         mll.to(train_X)
-        mll.to(device)
+        mll.to(self.device)
 
         # default wrapper tor training
         # fit_gpytorch_model(mll)
@@ -58,10 +59,13 @@ class SurrogateModel(object):
         optimizer_cls = optim.Adamax
         # optimizer_cls = optim.SparseAdam # doesn't support dense gradients
         
-        mll, info_dict, optimizer = fit_gpytorch_torch(mll=mll, \
+        torch.cuda.empty_cache()
+        
+        mll, info_dict, self.optimizer = fit_gpytorch_torch(mll=mll, \
                                             optimizer_cls=optimizer_cls, \
                                             options=optimizer_options, approx_mll=True, \
-                                            custom_optimizer=self.optimizer)
+                                            custom_optimizer=self.optimizer, \
+                                            device=self.device)
         # mll.eval()
         
         # fit_gpytorch_model(mll, optimizer=fit_gpytorch_torch)
@@ -75,11 +79,10 @@ class SurrogateModel(object):
 
         #     optimizer.zero_grad()fopt()
         loss = info_dict['fopt']
-        self.model = mll.model.cpu()
+        self.model = mll.model
         if epoch > 0: 
-            checkpoint = {'model': self.model, \
-                            'state_dict': self.model.state_dict(),
-                            'optimizer' : optimizer.state_dict()}
+            checkpoint = {  'state_dict': self.model.state_dict(),
+                            'optimizer' : self.optimizer.state_dict()}
 
             torch.save(checkpoint, f'models/checkpoint_{epoch}.pt')
     

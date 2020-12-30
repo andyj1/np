@@ -61,6 +61,7 @@ def fit_gpytorch_torch(
     track_iterations: bool = True,
     approx_mll: bool = True,
     custom_optimizer: Optional[Optimizer] = None,
+    device = None
 ) -> Tuple[MarginalLogLikelihood, Dict[str, Union[float, List[OptimizationIteration]]]]:
     r"""Fit a gpytorch model by maximizing MLL with a torch optimizer.
 
@@ -112,14 +113,18 @@ def fit_gpytorch_torch(
         mll_params = list(mll.parameters())
     
     optimizer = None
-    if custom_optimizer is not None:
+    if custom_optimizer is None: # default state for self.optimizer in surrogate.py
         optimizer = optimizer_cls(
             params=[{"params": mll_params}],
             **_filter_kwargs(optimizer_cls, **optim_options),
         )
     else:
         optimizer = custom_optimizer
-        
+    
+    # for state in optimizer.state.values():
+    #     for k, v in state.items():
+    #         state[k] = v.to(device)
+    
     # get bounds specified in model (if any)
     bounds_: ParameterBounds = {}
     if hasattr(mll, "named_parameters_and_constraints"):

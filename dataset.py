@@ -129,6 +129,8 @@ def getMOM4chipdata(data_path='./data/MOM4_data.csv', chiptype='R1005'):
 reflow_oven: function to model reflow oven shift behavior from MultiOutput RF regressor
 '''
 def reflow_oven(x_pre, y_pre, model_path='./RFRegressor/models/regr_multirf.pkl'):
+    x_pre = x_pre.cpu()
+    y_pre = y_pre.cpu()
     # load RF regressor
     regr_multirf = joblib.load(model_path)
     # X_test: Nx2 numpy array

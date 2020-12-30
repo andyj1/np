@@ -21,7 +21,7 @@ from surrogate import SurrogateModel
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 dtype = torch.float
 obj = bo_utils.objective
-
+torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -29,7 +29,7 @@ if __name__ == '__main__':
     parser.add_argument('--load', help='destination to model dict')
     args = parser.parse_args()
     
-    print('='*10,'test','='*10)
+    print('='*10,'data load','='*10)
 
     with open('config.yml', 'r')  as file:
         cfg = yaml.load(file, yaml.FullLoader)
@@ -47,19 +47,28 @@ if __name__ == '__main__':
     ''' make into proper dimension for SurrogateModel (e.g., SingleTaskGP) '''
     input_tensor = torch.cat([x_pre, y_pre], dim=1)                 # (N,2) dim
     target_tensor = torch.FloatTensor(euclidean_dist).unsqueeze(1)  # (N,1) dim
-
+    
     # initialize model and likelihood
     surrogate = SurrogateModel(epochs=NUM_EPOCH)
-    EPOCH_FROM = -1
-    if not args.load.empty():
+    if args.load is not None:
         checkpoint = torch.load(args.load)
-        surrogate.model.load_state_dict(checkpoint['model'])
+        surrogate.model.load_state_dict(checkpoint['model_dict'])
         surrogate.optimizer.load_state_dict(checkpoint['optimizer'])
-        EPOCH_FROM = int(args.load.split('.pt')[-1])
     start = time.time()
+    
+    
+    surrogate.model.to(device)
+    input_tensor =input_tensor.to(device)
+    target_tensor = target_tensor.to(device)
+    # print(next(surrogate.model.parameters()).is_cuda)
+    # print(input_tensor.is_cuda)
+    # print(target_tensor.is_cuda)
+    
     surrogate.fitGP(input_tensor, target_tensor, epoch=0)
     print(f'[INFO] initial train time: {time.time()-start:.3f} sec')
     
+    torch.backends.cudnn.benchmark = True
+
     # training loop
     fig = plt.figure()
     ax = fig.add_subplot()
@@ -74,6 +83,9 @@ if __name__ == '__main__':
                 
         # actual values from the objective, compute the distance
         x_new_pre, y_new_pre = candidate[0] # unravel tensor to numpy floats
+        x_new_pre = x_new_pre.cpu()
+        y_new_pre = y_new_pre.cpu()
+        
         x_new_post, y_new_post = reflow_oven(x_new_pre, y_new_pre)
 
         pre_dist = obj(x_new_pre, y_new_pre)
@@ -85,8 +97,11 @@ if __name__ == '__main__':
         # update input and target tensors
         input_tensor = torch.cat([input_tensor, candidate], dim=0)
         # since mll is maximized, purposely negate objective value
-        new_target = torch.from_numpy(np.array([-post_dist])).unsqueeze(1)
+        new_target = torch.from_numpy(np.array([-post_dist])).unsqueeze(1).to(device)
         target_tensor = torch.cat([target_tensor, new_target], dim=0)
+        
+        # input_tensor =input_tensor.to(device)
+        # target_tensor = target_tensor.to(device)
         
         t.set_description(desc=f'[INFO] Epoch {epoch+1} / train time: {time.time()-start:.3f} sec, pre_dist: {pre_dist:.3f}, post_dist: {post_dist:.3f}', refresh=False)
 
