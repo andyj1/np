@@ -8,11 +8,9 @@ import pandas as pd
 import torch
 from easydict import EasyDict as edict
 from tqdm import tqdm
+import time
 
 pd.set_option('display.max_columns', None)
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-dtype = torch.float
 
 '''
 1. define data generators
@@ -24,15 +22,15 @@ dtype = torch.float
 '''
 getTOYdata(): generates a toy set of PRE and POST data
 '''
-def getTOYdata(cfg):
+def getTOYdata(cfg, device):
     # config
     mu = cfg['data']['mu']
     sigma = cfg['data']['sigma']
     num_samples = cfg['train']['num_samples']    
 
     # pre data
-    x_pre = torch.normal(mean=mu, std=sigma, size=(num_samples, 1))
-    y_pre = torch.normal(mean=mu, std=sigma, size=(num_samples, 1))
+    x_pre = torch.normal(mean=mu, std=sigma, size=(num_samples, 1), device=device)
+    y_pre = torch.normal(mean=mu, std=sigma, size=(num_samples, 1), device=device)
 
     # reflow oven simulation
     
@@ -45,7 +43,7 @@ def getTOYdata(cfg):
 '''
 getMOM4data: returns lists of variables from random samples (count: num_samples)
 '''
-def getMOM4data(cfg):
+def getMOM4data(cfg, device):
     # config
     MOM4dict = cfg['MOM4']
     parttype = MOM4dict['parttype']
@@ -71,10 +69,10 @@ def getMOM4data(cfg):
     x_post = sampled_chip_df[post_var1].to_numpy()
     y_post = sampled_chip_df[post_var2].to_numpy()
 
-    x_pre = torch.FloatTensor(x_pre.reshape(-1,1))
-    y_pre = torch.FloatTensor(y_pre.reshape(-1,1))
-    x_post = torch.FloatTensor(x_post.reshape(-1,1))
-    y_post = torch.FloatTensor(y_post.reshape(-1,1))
+    x_pre = torch.FloatTensor(x_pre.reshape(-1,1), device=device)
+    y_pre = torch.FloatTensor(y_pre.reshape(-1,1), device=device)
+    x_post = torch.FloatTensor(x_post.reshape(-1,1), device=device)
+    y_post = torch.FloatTensor(y_post.reshape(-1,1), device=device)
 
     return x_pre, y_pre, x_post, y_post
 
@@ -100,7 +98,6 @@ def getMOM4chipdata(data_path='./data/MOM4_data.csv', chiptype='R1005'):
         if name == chiptype:
             chip_df = group
             break
-    
     # convert 90 deg to 0
     t = tqdm(chip_df.iterrows(), total=len(chip_df))
     for idx, row in t:    
@@ -129,8 +126,10 @@ def getMOM4chipdata(data_path='./data/MOM4_data.csv', chiptype='R1005'):
 reflow_oven: function to model reflow oven shift behavior from MultiOutput RF regressor
 '''
 def reflow_oven(x_pre, y_pre, model_path='./RFRegressor/models/regr_multirf.pkl'):
+   
     x_pre = x_pre.cpu()
     y_pre = y_pre.cpu()
+    
     # load RF regressor
     regr_multirf = joblib.load(model_path)
     # X_test: Nx2 numpy array
@@ -142,6 +141,7 @@ def reflow_oven(x_pre, y_pre, model_path='./RFRegressor/models/regr_multirf.pkl'
     y_multirf = regr_multirf.predict(X_test)
     x_post, y_post = y_multirf[:, 0], y_multirf[:, 1]
 
+    # print(f'[INFO] reflow oven simulation took {end_time-start_time:.3f} seconds')
     return x_post, y_post
 
 # test standalone

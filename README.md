@@ -13,6 +13,7 @@
 - UpperConfidenceBound
 - Expected Improvement
 - q-EI
+- ...
 
 ## How to run
 > for configurations, refer to config.yml
@@ -25,7 +26,7 @@ python main.py --toy --load {load_path} # load model and optimizer from checkpoi
 
 ## Configuration
 > refer to config.yml
-<!-- > - num_iter: 100 // number of iterations of optimization to do
+> - num_iter: 100 // number of iterations of optimization to do
 > - num_samples: 50 // number of samples for input data
 > - mu: 0 // input data normal distribution parameter
 > - sigma: 5 // input data normal distribution parameter

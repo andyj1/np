@@ -7,7 +7,7 @@ data:
   angle_sigma: 40
 
 acquisition:
-  option: 3
+  option: 1
   q: 1
   num_restarts: 10
   raw_samples: 40 # initialization heuristic
@@ -17,7 +17,7 @@ acquisition:
 
 train:
   num_epoch: 10
-  num_samples: 10
+  num_samples: 10000
 
 np:
   num_context: 10
@@ -26,7 +26,7 @@ np:
   z_samples: 20
 
 MOM4:
-  parttype: R0402
+  parttype: R1005
   xvar_pre: PRE_X
   yvar_pre: PRE_Y
   xvar_post: POST_X

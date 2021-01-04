@@ -5,7 +5,7 @@ from gpytorch.constraints.constraints import GreaterThan
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from botorch.fit import fit_gpytorch_model
 # from botorch.optim.fit import fit_gpytorch_torch
-from botorchoptimfit.fit import fit_gpytorch_torch
+from custom.fit import fit_gpytorch_torch
 
 from torch.optim import SGD
 import torch.optim as optim
@@ -18,11 +18,10 @@ from np_utils import log_likelihood, KLD_gaussian, random_split_context_target
 
     
 class SurrogateModel(object):
-    def __init__(self, train_X, train_Y, epochs=100):
+    def __init__(self, train_X, train_Y, device, epochs=100):
         super(SurrogateModel, self).__init__()
         
         self.epochs = epochs
-        # if not neural:
         
         # intiialize model for nominal purposes only
         self.model = SingleTaskGP(train_X=train_X, train_Y=train_Y)        
@@ -35,11 +34,12 @@ class SurrogateModel(object):
         
         # optimizer_cls = optim.AdamW
         # optimizer_cls = optim.SparseAdam # doesn't support dense gradients
-        self.optimizer_cls = optim.Adamax
+        # self.optimizer_cls = optim.Adamax
+        self.optimizer_cls = optim.Adam
         self.optimizer = self.optimizer_cls(self.model.parameters())
         
         # use GPU if available
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = device
         self.dtype = torch.float
         ''' alternative (default)
         self.model = SingleTaskGP(X, y)
@@ -48,14 +48,15 @@ class SurrogateModel(object):
         # fit_gpytorch_model uses L-BFGS-B to fit the parameters by default
         fit_gpytorch_model(self.mll)
         '''
-    # custom fitting
+    # custom GP fitting
     def fitGP(self, train_X, train_Y, cfg, toy_bool=False, epoch=0):
         # initialize model
         model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
         model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
+        model.to(self.device)
         mll = ExactMarginalLogLikelihood(likelihood=model.likelihood, model=model)
-        mll.to(train_X)
-        mll.to(self.device)
+        mll.to(train_X)     # set to data type
+        mll.to(self.device) # upload to GPU
 
         # default wrapper tor training
         # fit_gpytorch_model(mll)
@@ -63,32 +64,47 @@ class SurrogateModel(object):
         
         # customize optimizer in 'fit.py' in fit_gpytorch_torch()
         # optimizer need not have a closure
-        optimizer_options = {'lr': 0.05, "maxiter": 100, "disp": True, }
+        optimizer_options = {'lr': 0.05, "maxiter": 100, "disp": True} # for botorch
         
         ''' define custom optimizer using optimizer class: "self.optimizer_cls" '''
         # self.optimizer = self.optimizer_cls(model.parameters())
         self.optimizer = None # if None, defines a new optimizer within fit_gpytorch_torch
         
-        mll, info_dict, self.optimizer = fit_gpytorch_torch(mll=mll, \
-                                            optimizer_cls=self.optimizer_cls, \
-                                            options=optimizer_options, \
-                                            approx_mll=True, \
-                                            custom_optimizer=self.optimizer, \
-                                            device=self.device)
-        # mll.eval()
+        # mll, info_dict, self.optimizer = fit_gpytorch_torch(mll=mll, \
+        #                                     optimizer_cls=self.optimizer_cls, \
+        #                                     options=optimizer_options, \
+        #                                     approx_mll=True, \
+        #                                     custom_optimizer=self.optimizer, \
+        #                                     device=self.device)
+        # loss = info_dict['fopt']
         
+        # alternative to fit_gpytorch_torch
+        # mll.eval() # ??
         # fit_gpytorch_model(mll, optimizer=fit_gpytorch_torch)
 
-        # the following code works, but has multiple lengthscale outputs (can't observe lengthscale)
-        # model.train() # set train mode
-        # optimizer = SGD([{'params': model.parameters()}], lr=0.1)        
-        # t = trange(self.epochs, desc='', leave=False)
-        # for epoch in t:
-        #     t.set_description("[Train] Epoch %i / %i\t" % (epoch, self.epochs))
+        # uncomment the following code for custom fit
+        # * but has multiple lengthscale outputs (can't observe lengthscale)
+        optimizer_options = {'lr': 0.05} # for pytorch
+        model.train() # set train mode
+        self.optimizer = self.optimizer_cls([{'params': model.parameters()}], **optimizer_options)        
+        DISPLAY_FOR_EVERY = self.epochs
+        t = trange(self.epochs, desc='', leave=False)
+        for train_epoch in t:
 
-        #     optimizer.zero_grad()fopt()
-        loss = info_dict['fopt']
+            self.optimizer.zero_grad()
+            output = model(train_X)
+            loss = -mll(output, model.train_targets)
+            loss.backward()
+            # t.set_description(f"[Train] Iter {train_epoch+1:>3}/{self.epochs} - Loss: {loss.item():>4.3f} - noise: {model.likelihood.noise.item():>4.3f}\n",refresh=False)
+            
+            # if epoch % DISPLAY_FOR_EVERY == 0:
+            #     print(f"[Train] Iter {epoch+1:>3}/{self.epochs} - Loss: {loss.item():>4.3f} - noise: {model.likelihood.noise.item():>4.3f}")
+            # print(f"lengthscale: {model.covar_module.base_kernel.lengthscale:>4.3f}")
+            self.optimizer.step()
+        
+        
         self.model = mll.model
+        
         if epoch >= 0: 
             checkpoint = {'state_dict': self.model.state_dict(),
                           'optimizer' : self.optimizer.state_dict()}
@@ -97,7 +113,7 @@ class SurrogateModel(object):
             else:
                 torch.save(checkpoint, f"ckpts/{cfg['MOM4']['parttype']}/checkpoint_{epoch}.pt")
     
-    # TODO: 
+    # TODO:
     def fitNP(self, train_X, train_Y, cfg):        
         self.model.train()
         optimizer = optim.Adam(self.model.parameters(), lr=0.01)

@@ -9,7 +9,7 @@ from botorch.sampling import IIDNormalSampler
 
 
 class AcquisitionFunction(object):
-    def __init__(self, cfg, model, beta=None, best_f=None):
+    def __init__(self, cfg, model, device, beta=None, best_f=None):
         option = cfg['acquisition']['option']
         
         self.beta = 0 if beta is None else cfg['acquisition']['beta']
@@ -17,7 +17,7 @@ class AcquisitionFunction(object):
         
         dim = 2
         bound_limit = cfg['acquisition']['bounds']
-        self.bounds = torch.stack([-torch.ones(dim) * bound_limit, torch.ones(dim) * bound_limit])
+        self.bounds = torch.stack([-torch.ones(dim, device=device) * bound_limit, torch.ones(dim, device=device) * bound_limit])
         self.q = cfg['acquisition']['q']
         self.num_restarts = cfg['acquisition']['num_restarts']
         self.raw_samples = cfg['acquisition']['raw_samples']

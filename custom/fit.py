@@ -6,6 +6,10 @@
 
 r"""
 Tools for model fitting.
+
+Note: this function is customized from botorch.optim.fit.fit_gpytorch_torch
+
+
 """
 
 from __future__ import annotations
@@ -148,7 +152,7 @@ def fit_gpytorch_torch(
     stopping_criterion = ExpMAStoppingCriterion(
         **_filter_kwargs(ExpMAStoppingCriterion, **optim_options)
     )
-    DISPLAY_FOR_EVERY = 10
+    DISPLAY_FOR_EVERY = optim_options["maxiter"] #10
     train_inputs, train_targets = mll.model.train_inputs, mll.model.train_targets
     while not stop:
         optimizer.zero_grad()
