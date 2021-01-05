@@ -18,9 +18,10 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 train = True
 load = not train
 plot = False
+test = False
 max_depth = 30
 num_predictors = 100    # needs to be INTEGER
-TEST_SIZE = 100         # test sample size after split
+TEST_SIZE = 0         # test sample size after split
 
 # data path
 dir_path = pathlib.Path().absolute()
@@ -46,12 +47,14 @@ y = df[['POST_X','POST_Y']].to_numpy()
 
 # print('X:', X.shape, X[0:10], '\n','y:', y.shape, y[0:10])
 
-X_train, X_test, y_train, y_test = \
-    train_test_split(X, y, test_size=TEST_SIZE, random_state=SEED, shuffle=True)
+if TEST_SIZE == 0:
+    X_train, y_train = X, y
+elif TEST_SIZE > 0:
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=TEST_SIZE, random_state=SEED, shuffle=True)
 
-print('='*10,'sizes','='*10)
-print('X train:', X_train.shape,' X test:', X_test.shape)
-print('Y train:', y_train.shape,' Y test:', y_test.shape)
+    print('='*10,'sizes','='*10)
+    print('X train:', X_train.shape,' X test:', X_test.shape)
+    print('Y train:', y_train.shape,' Y test:', y_test.shape)
 
 ''' how to choose the number of predictors for random forest
 - if the number of observatiosn is large, but the number of trees is too small, 
@@ -93,11 +96,12 @@ if load == True:
     regr_multirf = joblib.load(f'./{result_path}/regr_multirf.pkl')
     # regr_rf = joblib.load("./regr_rf.pkl")
 
-print('='*10,'test','='*10)
-print('Predicting...')
-# Predict on new data
-y_multirf = regr_multirf.predict(X_test)
-# y_rf = regr_rf.predict(X_test)
+if test == True:
+    print('='*10,'test','='*10)
+    print('Predicting...')
+    # Predict on new data
+    y_multirf = regr_multirf.predict(X_test)
+    # y_rf = regr_rf.predict(X_test)
 
 # print('x train:', X_train, '\ny train:',y_train, '\n\nx_test:',X_test,'\ny_test:',y_test,'\n\nmultiRF:',y_multirf, '\nRF:', y_rf)
 

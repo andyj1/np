@@ -17,6 +17,7 @@ acquisition:
 
 train:
   num_epoch: 10
+  num_iter: 10
   num_samples: 10000
 
 np:

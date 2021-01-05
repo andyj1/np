@@ -5,6 +5,7 @@ import os
 import sys
 import time
 
+import joblib
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -13,7 +14,7 @@ from tqdm import trange
 
 import bo_utils
 import np_utils
-import viz_utils  # contourplot, draw_graphs
+# import viz_utils  # contourplot, draw_graphs
 from acquisition import AcquisitionFunction
 from dataset import getMOM4data, getTOYdata, reflow_oven
 from surrogate import SurrogateModel
@@ -22,14 +23,22 @@ from surrogate import SurrogateModel
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # device = torch.device('cpu')
 print('Running on:',device)
-dtype = torch.float
-obj = bo_utils.objective
-torch.set_default_tensor_type('torch.cuda.FloatTensor')
+if torch.cuda.is_available():
+    dtype = torch.float
+    obj = bo_utils.objective
+    torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 gc.collect()
 torch.cuda.empty_cache()
-        
+
+# load RF regressor
+print('='*10, 'loading regressor model', '='*10)
+model_path='./RFRegressor/models/regr_multirf.pkl'
+regr_multirf = joblib.load(model_path)
+
+
 def parse():
+    print('='*10,'parsing','='*10)
     parser = argparse.ArgumentParser()
     parser.add_argument('--toy', '--TOY', action='store_true',
                         help='sets to toy dataset')
@@ -47,14 +56,15 @@ if __name__ == '__main__':
     
     # load config
     cfg = yaml.load(open('config.yml', 'r'), yaml.FullLoader)
-    NUM_EPOCH = cfg['train']['num_epoch']
+    NUM_EPOCH = cfg['train']['num_iter']
+    NUM_TRAIN_EPOCH = cfg['train']['num_epoch']
     chip = cfg['MOM4']['parttype']
     
     # load data
     print('='*10, 'loading data', '='*10)
     if args.toy:
         print('Loading Toy data...')
-        x_pre, y_pre, x_post, y_post = getTOYdata(cfg, device)
+        x_pre, y_pre, x_post, y_post = getTOYdata(cfg, device, model=regr_multirf)
     else:
         print('Loading MOM4 data...')
         x_pre, y_pre, x_post, y_post = getMOM4data(cfg, device)
@@ -68,7 +78,7 @@ if __name__ == '__main__':
 
     # initialize model and likelihood
     EPOCH_FROM = 0
-    surrogate = SurrogateModel(input_tensor, target_tensor, device, epochs=NUM_EPOCH)
+    surrogate = SurrogateModel(input_tensor, target_tensor, device, epochs=NUM_TRAIN_EPOCH)
     if args.load is not None:
         checkpoint = torch.load(args.load)
         surrogate.model.load_state_dict(checkpoint['state_dict'])

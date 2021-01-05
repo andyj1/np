@@ -22,7 +22,7 @@ pd.set_option('display.max_columns', None)
 '''
 getTOYdata(): generates a toy set of PRE and POST data
 '''
-def getTOYdata(cfg, device):
+def getTOYdata(cfg, device, model):
     # config
     mu = cfg['data']['mu']
     sigma = cfg['data']['sigma']
@@ -34,7 +34,7 @@ def getTOYdata(cfg, device):
 
     # reflow oven simulation
     
-    x_post, y_post = reflow_oven(x_pre, y_pre)
+    x_post, y_post = reflow_oven(x_pre, y_pre, model)
     assert x_pre.shape == y_pre.shape
     assert x_post.shape == y_post.shape
 
@@ -125,27 +125,30 @@ def getMOM4chipdata(data_path='./data/MOM4_data.csv', chiptype='R1005'):
 '''
 reflow_oven: function to model reflow oven shift behavior from MultiOutput RF regressor
 '''
-def reflow_oven(x_pre, y_pre, model_path='./RFRegressor/models/regr_multirf.pkl'):
+
+def reflow_oven(x_pre, y_pre, model):
    
     x_pre = x_pre.cpu()
     y_pre = y_pre.cpu()
     
-    # load RF regressor
-    regr_multirf = joblib.load(model_path)
     # X_test: Nx2 numpy array
     x_pre = x_pre.reshape(-1,1)
     y_pre = y_pre.reshape(-1,1)
     X_test = np.concatenate((x_pre, y_pre), axis=1)
 
     # evaluate
-    y_multirf = regr_multirf.predict(X_test)
+    y_multirf = model.predict(X_test)
     x_post, y_post = y_multirf[:, 0], y_multirf[:, 1]
 
-    # print(f'[INFO] reflow oven simulation took {end_time-start_time:.3f} seconds')
     return x_post, y_post
 
 # test standalone
 if __name__=='__main__':
+
+    # load RF regressor
+    model_path='./RFRegressor/models/regr_multirf.pkl'
+    regr_multirf = joblib.load(model_path)
+
     import yaml
     with open('config.yml', 'r')  as file:
         cfg = yaml.load(file, yaml.FullLoader)

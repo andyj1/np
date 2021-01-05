@@ -15,10 +15,8 @@ import sys
 from NPModel import NP
 from np_utils import log_likelihood, KLD_gaussian, random_split_context_target
 
-
-    
 class SurrogateModel(object):
-    def __init__(self, train_X, train_Y, device, epochs=100):
+    def __init__(self, train_X, train_Y, device=torch.device('cpu'), epochs=100):
         super(SurrogateModel, self).__init__()
         
         self.epochs = epochs
