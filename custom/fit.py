@@ -7,9 +7,8 @@
 r"""
 Tools for model fitting.
 
-Note: this function is customized from botorch.optim.fit.fit_gpytorch_torch
-
-
+Note:   this function is customized:
+        from botorch.optim.fit import fit_gpytorch_torch
 """
 
 from __future__ import annotations

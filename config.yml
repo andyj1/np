@@ -6,19 +6,19 @@ data:
   angle_mu: 0
   angle_sigma: 40
 
-acquisition:
-  option: 1
-  q: 1
-  num_restarts: 10
-  raw_samples: 40 # initialization heuristic
-  bounds: 120
+acquisition:        # by default, it uses multi-start optimization
+  option: 1         # acquisition function type 
+  q: 1              # smallest number of candidates to be considered jointly
+  num_restarts: 10  # number of starting points for multi-start acquisition function
+  raw_samples: 40   # number of samples for initialization
+  bounds: 120       # 2xd tensor of lower and upper bounds for each column of X
   beta: 0.2
   best_f: 0.1
 
 train:
   num_epoch: 10
   num_iter: 10
-  num_samples: 10000
+  num_samples: 100
 
 np:
   num_context: 10

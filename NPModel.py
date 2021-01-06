@@ -11,7 +11,7 @@ from torch.nn import functional as F
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 import sys
 
-from np_utils import log_likelihood, KLD_gaussian, random_split_context_target
+from utils.np_utils import log_likelihood, KLD_gaussian, random_split_context_target
 
 # class definition
 class NP(nn.Module):

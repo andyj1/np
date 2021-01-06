@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import math
 import os
 
@@ -13,13 +15,6 @@ import time
 pd.set_option('display.max_columns', None)
 
 '''
-1. define data generators
-    a. toy data: random PRE from config mean and variance
-    b. randomly sampled PRE from MOM4
-2. output reflow oven outputs (POST)
-'''
-
-'''
 getTOYdata(): generates a toy set of PRE and POST data
 '''
 def getTOYdata(cfg, device, model):
@@ -32,8 +27,7 @@ def getTOYdata(cfg, device, model):
     x_pre = torch.normal(mean=mu, std=sigma, size=(num_samples, 1), device=device)
     y_pre = torch.normal(mean=mu, std=sigma, size=(num_samples, 1), device=device)
 
-    # reflow oven simulation
-    
+    # reflow oven simulation 
     x_post, y_post = reflow_oven(x_pre, y_pre, model)
     assert x_pre.shape == y_pre.shape
     assert x_post.shape == y_post.shape
@@ -79,7 +73,7 @@ def getMOM4data(cfg, device):
 '''
 getMOM4chipdata: retrieves dataframe for the particular chip
 '''
-def getMOM4chipdata(data_path='./data/MOM4_data.csv', chiptype='R1005'):
+def getMOM4chipdata(data_path='./data/MOM4_data.csv', chiptype='all'):
     
     # load MOM4 dataset
     print('[INFO] Loading %s...' % data_path)
@@ -94,10 +88,13 @@ def getMOM4chipdata(data_path='./data/MOM4_data.csv', chiptype='R1005'):
     
     # return dataframe for the selected chip type
     chip_df = None
-    for name, group in df.groupby(['PartType']):
-        if name == chiptype:
-            chip_df = group
-            break
+    if chiptype == 'all':
+        chip_df = df
+    else:
+        for name, group in df.groupby(['PartType']):
+            if name == chiptype:
+                chip_df = group
+                break
     # convert 90 deg to 0
     t = tqdm(chip_df.iterrows(), total=len(chip_df))
     for idx, row in t:    

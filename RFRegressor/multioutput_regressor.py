@@ -15,20 +15,19 @@ pd.set_option('display.max_columns', None)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # config
-train = True
+train = False
+plot = True
 load = not train
-plot = False
-test = False
+test = plot
 max_depth = 30
 num_predictors = 100    # needs to be INTEGER
-TEST_SIZE = 0         # test sample size after split
+TEST_SIZE = 100         # test sample size after split
 
 # data path
 dir_path = pathlib.Path().absolute()
 file = '../data/imputed_data.csv'
 data_path = os.path.join(dir_path, file)
 
-''' path '''
 # result path
 result_path = './models'
 if not os.path.isdir(result_path):
@@ -39,22 +38,41 @@ df = pd.read_csv(data_path  ,index_col=False).drop(['Unnamed: 0'], axis=1)
 df.reset_index(drop=True, inplace=True)
 assert df.isnull().sum().sum() == 0
 
-''' define dataset '''
-# Create a random dataset
-SEED = np.random.RandomState(1)
-X = df[['PRE_X','PRE_Y']].to_numpy()
-y = df[['POST_X','POST_Y']].to_numpy()
+SEED = np.random.RandomState(42)
+# X = df[['PRE_X','PRE_Y']].to_numpy()
+# y = df[['POST_X','POST_Y']].to_numpy()
+# train_save_filename = f'./{result_path}/regr_multirf.pkl'
+
+# by chip
+chip = 'R0402'
+# chip = 'R0603'
+# chip = 'R1005'
+df = df[df['PartType']==chip]
+# X =  df[['PRE_X','PRE_Y']].to_numpy()
+# y =  df[['POST_X','POST_Y']].to_numpy()
+# train_save_filename = f'./{result_path}/regr_multirf_{chip}.pkl'
+
+# by chip and PRE-SPI
+Xx = df['PRE_X'] - df['SPI_X_AVG']
+Xy = df['PRE_Y'] - df['SPI_Y_AVG']
+X =  pd.concat([Xx, Xy], axis=1).to_numpy()
+y =  df[['POST_X','POST_Y']].to_numpy()
+
+train_save_filename = f'./{result_path}/regr_multirf_{chip}_PRE-SPI.pkl'
 
 # print('X:', X.shape, X[0:10], '\n','y:', y.shape, y[0:10])
 
+X_train, X_test, y_train, y_test = None, None, None, None
 if TEST_SIZE == 0:
     X_train, y_train = X, y
+    X_test, y_test = torch.Tensor([]), torch.Tensor([])
 elif TEST_SIZE > 0:
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=TEST_SIZE, random_state=SEED, shuffle=True)
+    X_train, X_test, y_train, y_test = \
+        train_test_split(X, y, test_size=TEST_SIZE, random_state=SEED, shuffle=True)
 
-    print('='*10,'sizes','='*10)
-    print('X train:', X_train.shape,' X test:', X_test.shape)
-    print('Y train:', y_train.shape,' Y test:', y_test.shape)
+print('='*10,'sizes','='*10)
+print('X train:', X_train.shape,' X test:', X_test.shape)
+print('Y train:', y_train.shape,' Y test:', y_test.shape)
 
 ''' how to choose the number of predictors for random forest
 - if the number of observatiosn is large, but the number of trees is too small, 
@@ -72,30 +90,29 @@ regr_multirf = None
 regr_rf = None
 if train == True:
     print('='*10,'train','='*10)
-    print('Fitting MultiOutputRegressor...')
-    # random forest regressor - multiple output
+    print('Initializing Regressors...')
     regr_multirf = MultiOutputRegressor(RandomForestRegressor(n_estimators=num_predictors,
                                                             max_depth=max_depth,
                                                             random_state=0))
-    # random forest regressor
     # regr_rf = RandomForestRegressor(n_estimators=num_predictors, max_depth=max_depth,
     #                                 random_state=2)
 
-    print('Fitting RandomForestRegressor...')
+    print('Fitting Regressors...')
     regr_multirf.fit(X_train, y_train)
     # regr_rf.fit(X_train, y_train)
 
     print('Saving RF Models...')
     COMPRESS_LEVEL = 3   # 3: ideal tradeoff b/w data loss and model size
-    joblib.dump(regr_multirf, f'./{result_path}/regr_multirf.pkl', compress=COMPRESS_LEVEL)
+    joblib.dump(regr_multirf, train_save_filename, compress=COMPRESS_LEVEL)
     # joblib.dump(regr_rf, f'./{result_path}/regr_rf.pkl', compress=COMPRESS_LEVEL)
 
 ''' load from RF model '''
 if load == True:
     print('Loading models...')
-    regr_multirf = joblib.load(f'./{result_path}/regr_multirf.pkl')
+    regr_multirf = joblib.load(train_save_filename)
     # regr_rf = joblib.load("./regr_rf.pkl")
 
+if TEST_SIZE == 0: test = False
 if test == True:
     print('='*10,'test','='*10)
     print('Predicting...')
@@ -126,10 +143,9 @@ if plot == True:
         plt.savefig(f'./regressor_only_output.png')
         # plt.show()
         # plt.clf()
-        print('saved RF')
+        print('saved RF image')
     
     # RF multi only
-
     if 'y_multirf' in locals():
         plt.figure()
         s = 50
@@ -141,13 +157,15 @@ if plot == True:
                     label="Multi RF score=%.2f" % regr_multirf.score(X_test, y_test))
         plt.xlabel("x")
         plt.ylabel("y")
-        plt.title("Random Forest (multi-output) meta estimator")
+        # plt.title("Random Forest (multi-output) meta estimator")
+        plt.title(f"{chip}_{TEST_SIZE} samples_Random Forest (multi-output) meta estimator")
         plt.legend()
 
-        plt.savefig(f'./regressor_multionly_output.png')
+        plt.savefig(f'regressor_multionly_output.png')
+        plt.savefig(f'{chip}_{TEST_SIZE} regressor_multionly_output.png')
         # plt.show()
         # plt.clf()
-        print('saved multi RF')
+        print('saved multi RF image')
 
     # RF and Multi RF together
     if 'y_rf' in locals() and 'y_multirf' in locals():
@@ -172,5 +190,5 @@ if plot == True:
         plt.savefig(f'./regressor_both_output.png')
         # plt.show()
         # plt.clf()
-        print('saved both')
+        print('saved both images')
 

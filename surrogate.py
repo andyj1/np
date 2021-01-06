@@ -1,10 +1,11 @@
+#!/usr/bin/env python3
+
 import torch
 import torch.nn as nn
 from botorch.models import SingleTaskGP
 from gpytorch.constraints.constraints import GreaterThan
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from botorch.fit import fit_gpytorch_model
-# from botorch.optim.fit import fit_gpytorch_torch
 from custom.fit import fit_gpytorch_torch
 
 from torch.optim import SGD
@@ -13,7 +14,7 @@ from tqdm import trange
 import sys
 
 from NPModel import NP
-from np_utils import log_likelihood, KLD_gaussian, random_split_context_target
+from utils.np_utils import log_likelihood, KLD_gaussian, random_split_context_target
 
 class SurrogateModel(object):
     def __init__(self, train_X, train_Y, device=torch.device('cpu'), epochs=100):
@@ -48,7 +49,7 @@ class SurrogateModel(object):
         '''
     # custom GP fitting
     def fitGP(self, train_X, train_Y, cfg, toy_bool=False, epoch=0):
-        # initialize model
+        # re-initialize model
         model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
         model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
         model.to(self.device)

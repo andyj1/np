@@ -2,9 +2,13 @@
 data/
 models/
 RFRegressor/models/
+
 # omit pickles
 *.pkl
 *.p
+
+# omit checkpoints
+*.pt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
