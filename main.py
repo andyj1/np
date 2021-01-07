@@ -39,7 +39,7 @@ TEST_SIZE = 10
 SEED = 42
 torch.manual_seed(SEED)
 
-def loadReflowOven(chip='R0402', inputtype=0):
+def loadReflowOven(chip='R0402', inputtype=0, reflowoven=False):
     # chip: chip type for selecting the model
     # inputtype: PRE or PRE-SPI for (x,y) positions
     
@@ -66,8 +66,9 @@ def loadReflowOven(chip='R0402', inputtype=0):
         model = 7
     
     # override for the case: each chip data with all chip data trained reflow oven model
-    # model = 6 # PRE
-    model = 7 # PRE-SPI
+    if reflowoven == True:
+        # model = 6 # PRE
+        model = 7 # PRE-SPI
     
     base_path = 'RFRegressor/models/'
     # reflow oven maps in 2 different ways: (1) PRE-SPI -> POST, or (2) PRE -> POST 
@@ -110,9 +111,10 @@ def main():
     NUM_SAMPLES = cfg['train']['num_samples']
     chip = cfg['MOM4']['parttype']
     INPUT_TYPE = 1 # check dataset.py to ensure the input is correct
+    REFLOW_OVEN_ALL = True
     
     # load reflow oven regressor
-    regr_multirf = loadReflowOven(chip, inputtype=INPUT_TYPE)
+    regr_multirf = loadReflowOven(chip, inputtype=INPUT_TYPE, reflowoven=REFLOW_OVEN_ALL)
     input_types = {0: 'PRE -> POST', 1: 'PRE-SPI -> POST'}
     print('='*10, 'selecting chip:', chip, ' / input type:', input_types[INPUT_TYPE])
     
