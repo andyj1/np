@@ -58,11 +58,11 @@ def getMOM4data(cfg, device):
     num_samples = cfg['train']['num_samples']
     
     sampled_chip_df = chip_df.sample(n=num_samples)
-    x_pre = sampled_chip_df[pre_var1].to_numpy() # pre x only
-    # x_pre = (sampled_chip_df[pre_var1]-sampled_chip_df['SPI_X_AVG']).to_numpy() # pre x - spi x
+    # x_pre = sampled_chip_df[pre_var1].to_numpy() # pre x only
+    # y_pre = sampled_chip_df[pre_var2].to_numpy() # pre y only
     
-    y_pre = sampled_chip_df[pre_var2].to_numpy() # pre y only
-    # y_pre = (sampled_chip_df[pre_var2]-sampled_chip_df['SPI_Y_AVG']).to_numpy()
+    x_pre = (sampled_chip_df[pre_var1]-sampled_chip_df['SPI_X_AVG']).to_numpy() # pre x - spi x
+    y_pre = (sampled_chip_df[pre_var2]-sampled_chip_df['SPI_Y_AVG']).to_numpy()
     
     x_post = sampled_chip_df[post_var1].to_numpy()
     y_post = sampled_chip_df[post_var2].to_numpy()

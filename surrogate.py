@@ -49,6 +49,7 @@ class SurrogateModel(object):
         '''
     # custom GP fitting
     def fitGP(self, train_X, train_Y, cfg, toy_bool=False, epoch=0):
+        chip = cfg['MOM4']['parttype']
         # re-initialize model
         model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
         model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
@@ -69,40 +70,39 @@ class SurrogateModel(object):
         # self.optimizer = self.optimizer_cls(model.parameters())
         self.optimizer = None # if None, defines a new optimizer within fit_gpytorch_torch
         
-        # mll, info_dict, self.optimizer = fit_gpytorch_torch(mll=mll, \
-        #                                     optimizer_cls=self.optimizer_cls, \
-        #                                     options=optimizer_options, \
-        #                                     approx_mll=True, \
-        #                                     custom_optimizer=self.optimizer, \
-        #                                     device=self.device)
-        # loss = info_dict['fopt']
+        mll, info_dict, self.optimizer = fit_gpytorch_torch(mll=mll, \
+                                            optimizer_cls=self.optimizer_cls, \
+                                            options=optimizer_options, \
+                                            approx_mll=True, \
+                                            custom_optimizer=self.optimizer, \
+                                            device=self.device)
+        loss = info_dict['fopt']
+        self.model = mll.model
         
         # alternative to fit_gpytorch_torch
         # mll.eval() # ??
         # fit_gpytorch_model(mll, optimizer=fit_gpytorch_torch)
 
-        # uncomment the following code for custom fit
-        # * but has multiple lengthscale outputs (can't observe lengthscale)
-        optimizer_options = {'lr': 0.05} # for pytorch
-        model.train() # set train mode
-        self.optimizer = self.optimizer_cls([{'params': model.parameters()}], **optimizer_options)        
-        DISPLAY_FOR_EVERY = self.epochs
-        t = trange(self.epochs, desc='', leave=False)
-        for train_epoch in t:
+        ''' uncomment the following code for custom fit  * but has multiple lengthscale outputs (can't observe lengthscale) '''
+        # optimizer_options = {'lr': 0.05} # for pytorch
+        # model.train() # set train mode
+        # self.optimizer = self.optimizer_cls([{'params': model.parameters()}], **optimizer_options)        
+        # DISPLAY_FOR_EVERY = self.epochs
+        # t = trange(self.epochs, desc='', leave=False)
+        # for train_epoch in t:
 
-            self.optimizer.zero_grad()
-            output = model(train_X)
-            loss = -mll(output, model.train_targets)
-            loss.backward()
-            # t.set_description(f"[Train] Iter {train_epoch+1:>3}/{self.epochs} - Loss: {loss.item():>4.3f} - noise: {model.likelihood.noise.item():>4.3f}\n",refresh=False)
+        #     self.optimizer.zero_grad()
+        #     output = model(train_X)
+        #     loss = -mll(output, model.train_targets)
+        #     loss.backward()
+        #     # t.set_description(f"[Train] Iter {train_epoch+1:>3}/{self.epochs} - Loss: {loss.item():>4.3f} - noise: {model.likelihood.noise.item():>4.3f}\n",refresh=False)
             
-            # if epoch % DISPLAY_FOR_EVERY == 0:
-            #     print(f"[Train] Iter {epoch+1:>3}/{self.epochs} - Loss: {loss.item():>4.3f} - noise: {model.likelihood.noise.item():>4.3f}")
-            # print(f"lengthscale: {model.covar_module.base_kernel.lengthscale:>4.3f}")
-            self.optimizer.step()
+        #     # if epoch % DISPLAY_FOR_EVERY == 0:
+        #     #     print(f"[Train] Iter {epoch+1:>3}/{self.epochs} - Loss: {loss.item():>4.3f} - noise: {model.likelihood.noise.item():>4.3f}")
+        #     # print(f"lengthscale: {model.covar_module.base_kernel.lengthscale:>4.3f}")
+        #     self.optimizer.step()
         
         
-        self.model = mll.model
         
         if epoch >= 0: 
             checkpoint = {'state_dict': self.model.state_dict(),
@@ -110,7 +110,7 @@ class SurrogateModel(object):
             if toy_bool:
                 torch.save(checkpoint, f"ckpts/toy/checkpoint_{epoch}.pt")
             else:
-                torch.save(checkpoint, f"ckpts/{cfg['MOM4']['parttype']}/checkpoint_{epoch}.pt")
+                torch.save(checkpoint, f"ckpts/{chip}/checkpoint_{epoch}.pt")
     
     # TODO:
     def fitNP(self, train_X, train_Y, cfg):        

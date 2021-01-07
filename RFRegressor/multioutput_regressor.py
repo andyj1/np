@@ -1,4 +1,4 @@
-# mount your current Google Drive (Directory)
+
 import os
 import pathlib
 
@@ -15,13 +15,13 @@ pd.set_option('display.max_columns', None)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # config
-train = False
-plot = True
+train = True
+plot = False
 load = not train
 test = plot
 max_depth = 30
 num_predictors = 100    # needs to be INTEGER
-TEST_SIZE = 100         # test sample size after split
+TEST_SIZE = 0         # test sample size after split
 
 # data path
 dir_path = pathlib.Path().absolute()
@@ -39,26 +39,25 @@ df.reset_index(drop=True, inplace=True)
 assert df.isnull().sum().sum() == 0
 
 SEED = np.random.RandomState(42)
+# (1) all chips
 # X = df[['PRE_X','PRE_Y']].to_numpy()
 # y = df[['POST_X','POST_Y']].to_numpy()
 # train_save_filename = f'./{result_path}/regr_multirf.pkl'
 
-# by chip
-chip = 'R0402'
-# chip = 'R0603'
-# chip = 'R1005'
-df = df[df['PartType']==chip]
+# (2) train by chip
+# chip = 'R0402' # ['R0402','R0603','R1005]
+# df = df[df['PartType']==chip]
 # X =  df[['PRE_X','PRE_Y']].to_numpy()
 # y =  df[['POST_X','POST_Y']].to_numpy()
 # train_save_filename = f'./{result_path}/regr_multirf_{chip}.pkl'
 
-# by chip and PRE-SPI
+# (3) by chip and PRE-SPI
 Xx = df['PRE_X'] - df['SPI_X_AVG']
 Xy = df['PRE_Y'] - df['SPI_Y_AVG']
 X =  pd.concat([Xx, Xy], axis=1).to_numpy()
 y =  df[['POST_X','POST_Y']].to_numpy()
 
-train_save_filename = f'./{result_path}/regr_multirf_{chip}_PRE-SPI.pkl'
+train_save_filename = f'{result_path}/regr_multirf_PRE-SPI.pkl'
 
 # print('X:', X.shape, X[0:10], '\n','y:', y.shape, y[0:10])
 
