@@ -50,11 +50,11 @@ model_paths = ['regr_multirf_R0402_PRE-SPI.pkl', 'regr_multirf_R0402.pkl', \
                 'regr_multirf_R0603_PRE-SPI.pkl','regr_multirf_R0603.pkl', \
                 'regr_multirf_R1005_PRE-SPI.pkl', 'regr_multirf_R1005.pkl', \
                 'regr_multirf.pkl']
-regr_multirf_list = []
-for model_path in model_paths:
-    model_path = os.path.join(base_path, model_path)
-    regr_multirf_list.append(joblib.load(model_path))
-regr_multirf = regr_multirf_list[model]
+# regr_multirf_list = []
+# for model_path in model_paths:
+#     model_path = os.path.join(base_path, model_path)
+#     regr_multirf_list.append(joblib.load(model_path))
+regr_multirf = joblib.load(os.path.join(base_path,model_paths[model]))
 
 loadRFRegressor_end = time.time()
 print(': took: %.3f seconds' % (loadRFRegressor_end - loadRFRegressor_start))
@@ -165,7 +165,7 @@ def main():
         y_new_pre = y_new_pre.cpu()
         
         reflowoven_start = time.time()
-        x_new_post, y_new_post = reflow_oven(x_new_pre, y_new_pre)
+        x_new_post, y_new_post = reflow_oven(x_new_pre, y_new_pre, regr_multirf)
         reflowoven_end = time.time()
 
         pre_dist = obj(x_new_pre, y_new_pre)
