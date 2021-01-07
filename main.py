@@ -32,9 +32,9 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print('Running on:',device)
 dtype = torch.float
 obj = bo_utils.objective
-
-gc.collect()
-torch.cuda.empty_cache()
+# print('[INFO] garbage collect, torch emptying cache...')
+# gc.collect()
+# torch.cuda.empty_cache()
 TEST_SIZE = 10
 SEED = 42
 torch.manual_seed(SEED)
@@ -42,12 +42,8 @@ torch.manual_seed(SEED)
 ''' load RF regressor '''
 print('='*10, 'loading regressor model', '='*10, end='')
 loadRFRegressor_start = time.time()
-
-model_path ='./RFRegressor/models/regr_multirf.pkl'
-regr_multirf = joblib.load(model_path)
-
 # select a reflow oven model
-model = 0
+model = 1
 base_path = 'RFRegressor/models/'
 # reflow oven maps in 2 different ways: (1) PRE-SPI -> POST, or (2) PRE -> POST 
 model_paths = ['regr_multirf_R0402_PRE-SPI.pkl', 'regr_multirf_R0402.pkl', \
@@ -58,7 +54,7 @@ regr_multirf_list = []
 for model_path in model_paths:
     model_path = os.path.join(base_path, model_path)
     regr_multirf_list.append(joblib.load(model_path))
-reegr_multirf = regr_multirf_list[model]
+regr_multirf = regr_multirf_list[model]
 
 loadRFRegressor_end = time.time()
 print(': took: %.3f seconds' % (loadRFRegressor_end - loadRFRegressor_start))
@@ -69,12 +65,9 @@ def parse():
     parser.add_argument('--toy', '--TOY', action='store_true', help='sets to toy dataset')
     parser.add_argument('--load', help='destination to model dict')
     parser.add_argument('--np', action='store_true', help='neural process')
-    parser.add_argument('--help','-h', action='store_true')
     args = parser.parse_args()
     
-    if args.help:
-        print('usage: main.py [--toy] \n \t [--np] \n \t [--load] path/to/checkpoint ')
-        sys.exit(0)
+    # usage: main.py [--toy] [--np] [--load path/to/checkpoint]
     return args
 
 def checkParamIsSentToCuda(args):
@@ -97,7 +90,7 @@ def main():
         x_pre, y_pre, x_post, y_post = getTOYdata(cfg, device, model=regr_multirf)
     else:
         print('Loading MOM4 data...')
-        x_pre, y_pre, x_post, y_post = getMOM4data(cfg, device, chiptype='all')
+        x_pre, y_pre, x_post, y_post = getMOM4data(cfg, device)
     
     # split into train and test
     x_pre_train, y_pre_train, x_post_train, y_post_train = \
@@ -137,22 +130,20 @@ def main():
     # checkParamIsSentToCuda([next(surrogate.model.parameters()), input_tensor, target_tensor]) 
     
     # initial training before acquisition loop
-    initialtrain_start = time.time()
+    initial_train_start = time.time()
     if args.np:
         surrogate.fitNP(input_tensor, target_tensor, cfg, toy_bool=args.toy, epoch=-1)
     else:
         surrogate.fitGP(input_tensor, target_tensor, cfg, toy_bool=args.toy, epoch=-1)
-    initialtrain_end = time.time()
-    print(f'[INFO] initial train time: {initialtrain_end-initialtrain_start:.3f} sec')
+    initial_train_end = time.time()
+    print(f'[INFO] initial train time: {initial_train_end-initial_train_start:.3f} sec')
         
     torch.backends.cudnn.benchmark = True
     # make folders for checkpoints
-    if not os.path.isdir('ckpts'):
-        os.makedirs('ckpts', exist_ok=True, mode=0o755)
-        os.makedirs('ckpts/R0402', exist_ok=True, mode=0o755)
-        os.makedirs('ckpts/R0603', exist_ok=True, mode=0o755)
-        os.makedirs('ckpts/R1005', exist_ok=True, mode=0o755)
-        os.makedirs('ckpts/toy', exist_ok=True, mode=0o755)
+    folders = ['ckpts','ckpts/R0402','ckpts/R0603','ckpts/R1005','ckpts/all', 'ckpts/toy']
+    for folder in folders:
+        if not os.path.isdir(folder):
+            os.makedirs(folder, exist_ok=True, mode=0o755)
 
     # training loop
     fig = plt.figure()
@@ -165,9 +156,8 @@ def main():
         # optimize acquisition functions and get new observations
         acq_start = time.time()
         acq_fcn = Acquisition(cfg=cfg, model=surrogate.model, device=device)
-        acq_end = time.time()        
-        
         candidate, acq_value = acq_fcn.optimize()
+        acq_end = time.time()        
 
         # actual values from the objective, compute the distance
         x_new_pre, y_new_pre = candidate[0]  # unravel tensor to numpy floats
@@ -205,20 +195,6 @@ def main():
         t.set_description(
             desc=f'[INFO] Epoch {epoch+1} / processing time: {CRED} (total): {retrain_end-epoch_start:.5f} sec, (acq):{acq_end-acq_start:.5f} sec, (reflow oven): {reflowoven_end-reflowoven_start:.5f} sec, (retrain): {retrain_end-retrain_start:.5f} sec, {CEND} pre_dist: {pre_dist:.3f}, post_dist: {post_dist:.3f}\n', 
             refresh=False)
-        
-        # eval
-        # x = input_tensor
-        # posterior = surrogate.eval(x)
-        # print('posterior(',len(posterior),'):', posterior)
-
-        # for visualization
-        # if iter % 5 == 0 and iter > 0:
-        #     viz_utils.draw_graphs(input_tensor[:cfg['num_samples']], input_tensor[cfg['num_samples']:],
-        #                 x_post, y_post, cfg, iter)
-        #     _dim = int(np.sqrt(_bins.shape[0]))
-        #     viz_utils.contourplot(_bin, _bin, 'Results_%d'%iter,
-        #                 x_pre = input_tensor[:,0], y_pre = input_tensor[:,1], x_post = x_post, y_post = y_post,
-        #                 cfg = cfg)
 
         ax.scatter(x_new_pre, y_new_pre, s=10, alpha=(
             epoch+1)*1/NUM_ITER, color='r')

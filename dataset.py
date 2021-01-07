@@ -58,20 +58,24 @@ def getMOM4data(cfg, device):
     num_samples = cfg['train']['num_samples']
     
     sampled_chip_df = chip_df.sample(n=num_samples)
-    x_pre = sampled_chip_df[pre_var1].to_numpy()
-    y_pre = sampled_chip_df[pre_var2].to_numpy()
+    x_pre = sampled_chip_df[pre_var1].to_numpy() # pre x only
+    # x_pre = (sampled_chip_df[pre_var1]-sampled_chip_df['SPI_X_AVG']).to_numpy() # pre x - spi x
+    
+    y_pre = sampled_chip_df[pre_var2].to_numpy() # pre y only
+    # y_pre = (sampled_chip_df[pre_var2]-sampled_chip_df['SPI_Y_AVG']).to_numpy()
+    
     x_post = sampled_chip_df[post_var1].to_numpy()
     y_post = sampled_chip_df[post_var2].to_numpy()
 
-    x_pre = torch.FloatTensor(x_pre.reshape(-1,1), device=device)
-    y_pre = torch.FloatTensor(y_pre.reshape(-1,1), device=device)
-    x_post = torch.FloatTensor(x_post.reshape(-1,1), device=device)
-    y_post = torch.FloatTensor(y_post.reshape(-1,1), device=device)
+    x_pre = torch.FloatTensor(x_pre.reshape(-1,1))
+    y_pre = torch.FloatTensor(y_pre.reshape(-1,1))
+    x_post = torch.FloatTensor(x_post.reshape(-1,1))
+    y_post = torch.FloatTensor(y_post.reshape(-1,1))
 
     return x_pre, y_pre, x_post, y_post
 
 '''
-getMOM4chipdata: retrieves dataframe for the particular chip
+getMOM4chipdata: retrieves dataframe for the particular chip or all chips ('chiptype)
 '''
 def getMOM4chipdata(data_path='./data/MOM4_data.csv', chiptype='all'):
     
@@ -116,7 +120,6 @@ def getMOM4chipdata(data_path='./data/MOM4_data.csv', chiptype='all'):
             chip_df.loc[idx, 'SPI_X_AVG'] = spi_x_avg
             chip_df.loc[idx, 'SPI_Y_AVG'] = spi_y_avg
             t.set_description(f'Switching 90 to 0 for index: {idx}')
-            
     return chip_df
 
 '''

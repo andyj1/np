@@ -17,7 +17,7 @@ acquisition:        # by default, it uses multi-start optimization
 
 train:
   num_epoch: 10
-  num_iter: 10
+  num_iter: 100
   num_samples: 100
 
 np:
@@ -27,7 +27,7 @@ np:
   z_samples: 20
 
 MOM4:
-  parttype: R1005
+  parttype: R0402 # [R0402, R0603, R1005, all]
   xvar_pre: PRE_X
   yvar_pre: PRE_Y
   xvar_post: POST_X
