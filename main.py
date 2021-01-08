@@ -23,21 +23,25 @@ from surrogate import SurrogateModel
 from utils import (bo_utils, np_utils,  # viz_utils: contourplot, draw_graphs
                    viz_utils)
 
-warnings.filterwarnings('ignore', category=BadInitialCandidatesWarning)
-warnings.filterwarnings('ignore', category=RuntimeWarning)
-
 # use GPU if available
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-# device = torch.device('cpu')
-print('Running on:',device)
 dtype = torch.float
 obj = bo_utils.objective
+
+warnings.filterwarnings('ignore', category=BadInitialCandidatesWarning)
+warnings.filterwarnings('ignore', category=RuntimeWarning)
+SEED = 42
+torch.manual_seed(SEED)
+
 # print('[INFO] garbage collect, torch emptying cache...')
 # gc.collect()
 # torch.cuda.empty_cache()
+print('Running on:',device)
+
+''' configuration '''
 TEST_SIZE = 10
-SEED = 42
-torch.manual_seed(SEED)
+INPUT_TYPE = 0 # 0: PRE, 1: PRE-SPI
+REFLOW_OVEN_ALL = True
 
 def loadReflowOven(chip='R0402', inputtype=0, reflowoven=False):
     # chip: chip type for selecting the model
@@ -67,8 +71,8 @@ def loadReflowOven(chip='R0402', inputtype=0, reflowoven=False):
     
     # override for the case: each chip data with all chip data trained reflow oven model
     if reflowoven == True:
-        # model = 6 # PRE
-        model = 7 # PRE-SPI
+        model = 6 # PRE
+        # model = 7 # PRE-SPI
     
     base_path = 'RFRegressor/models/'
     # reflow oven maps in 2 different ways: (1) PRE-SPI -> POST, or (2) PRE -> POST 
@@ -110,8 +114,6 @@ def main():
     NUM_TRAIN_EPOCH = cfg['train']['num_iter']
     NUM_SAMPLES = cfg['train']['num_samples']
     chip = cfg['MOM4']['parttype']
-    INPUT_TYPE = 1 # check dataset.py to ensure the input is correct
-    REFLOW_OVEN_ALL = True
     
     # load reflow oven regressor
     regr_multirf = loadReflowOven(chip, inputtype=INPUT_TYPE, reflowoven=REFLOW_OVEN_ALL)
@@ -231,12 +233,27 @@ def main():
             desc=f'[INFO] Epoch {iter+1} / processing time: {CRED} (total): {retrain_end-iter_start:.5f} sec, (acq):{acq_end-acq_start:.5f} sec, (reflow oven): {reflowoven_end-reflowoven_start:.5f} sec, (retrain): {retrain_end-retrain_start:.5f} sec, {CEND} pre_dist: {pre_dist:.3f}, post_dist: {post_dist:.3f}\n', 
             refresh=False)
 
-        ax.scatter(x_new_pre, y_new_pre, s=10, alpha=(iter+1)*1/NUM_ITER, color='r', label='PRE')
-        ax.scatter(x_new_post, y_new_post, s=20,alpha=(iter+1)*1/NUM_ITER, color='b', label='POST')
-    ax.legend(loc='best',labels=['PRE','POST'])
+        ax.scatter(x_new_pre, y_new_pre, s=10, alpha=(iter+1)*1/NUM_ITER, color='r')
+        # ax.scatter(x_new_post, y_new_post, s=20,alpha=(iter+1)*1/NUM_ITER, color='b', label='POST')
+    # ax.legend(loc='best',labels=['PRE','POST'])
     ax.set_xlabel('x')
     ax.set_ylabel('y')
+    ax.set_xlim([-120, 120])
+    ax.set_ylim([-120, 120])
     ax.set_title('Pre -> Post (darker color: later iteration)')
+
+    fig2 = plt.figure()
+    ax2 = fig2.add_subplot()
+    ax2.scatter(x_pre, y_pre, color='g')
+    ax2.legend(loc='best')
+    ax2.set_xlabel('x')
+    ax2.set_ylabel('y')
+    ax2.set_xlim([-120, 120])
+    ax2.set_ylim([-120, 120])
+    ax2.set_title('Actual Pre x,y vs. candidate x, y')
+    plt.show()
+    
+    sys.exit()
     if INPUT_TYPE == 0:
         fig.savefig(f'reflowovenall_{chip}_{NUM_SAMPLES}_samples_PRE_POST.png')
     elif INPUT_TYPE == 1:

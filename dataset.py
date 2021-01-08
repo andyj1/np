@@ -17,15 +17,15 @@ pd.set_option('display.max_columns', None)
 '''
 getTOYdata(): generates a toy set of PRE and POST data
 '''
-def getTOYdata(cfg, device, model):
+def getTOYdata(cfg, model):
     # config
     mu = cfg['data']['mu']
     sigma = cfg['data']['sigma']
     num_samples = cfg['train']['num_samples']    
 
     # pre data
-    x_pre = torch.normal(mean=mu, std=sigma, size=(num_samples, 1), device=device)
-    y_pre = torch.normal(mean=mu, std=sigma, size=(num_samples, 1), device=device)
+    x_pre = torch.normal(mean=mu, std=sigma, size=(num_samples, 1))
+    y_pre = torch.normal(mean=mu, std=sigma, size=(num_samples, 1))
 
     # reflow oven simulation 
     x_post, y_post = reflow_oven(x_pre, y_pre, model)
@@ -37,7 +37,7 @@ def getTOYdata(cfg, device, model):
 '''
 getMOM4data: returns lists of variables from random samples (count: num_samples)
 '''
-def getMOM4data(cfg, device):
+def getMOM4data(cfg):
     # config
     MOM4dict = cfg['MOM4']
     parttype = MOM4dict['parttype']
@@ -58,11 +58,11 @@ def getMOM4data(cfg, device):
     num_samples = cfg['train']['num_samples']
     
     sampled_chip_df = chip_df.sample(n=num_samples)
-    # x_pre = sampled_chip_df[pre_var1].to_numpy() # pre x only
-    # y_pre = sampled_chip_df[pre_var2].to_numpy() # pre y only
+    x_pre = sampled_chip_df[pre_var1].to_numpy() # pre x only
+    y_pre = sampled_chip_df[pre_var2].to_numpy() 
     
-    x_pre = (sampled_chip_df[pre_var1]-sampled_chip_df['SPI_X_AVG']).to_numpy() # pre x - spi x
-    y_pre = (sampled_chip_df[pre_var2]-sampled_chip_df['SPI_Y_AVG']).to_numpy()
+    # x_pre = (sampled_chip_df[pre_var1]-sampled_chip_df['SPI_X_AVG']).to_numpy() # pre x - spi x
+    # y_pre = (sampled_chip_df[pre_var2]-sampled_chip_df['SPI_Y_AVG']).to_numpy()
     
     x_post = sampled_chip_df[post_var1].to_numpy()
     y_post = sampled_chip_df[post_var2].to_numpy()
@@ -77,7 +77,7 @@ def getMOM4data(cfg, device):
 '''
 getMOM4chipdata: retrieves dataframe for the particular chip or all chips ('chiptype)
 '''
-def getMOM4chipdata(data_path='./data/MOM4_data.csv', chiptype='all'):
+def getMOM4chipdata(data_path='./data/imputed_data.csv', chiptype='all'):
     
     # load MOM4 dataset
     print('[INFO] Loading %s...' % data_path)
@@ -85,12 +85,7 @@ def getMOM4chipdata(data_path='./data/MOM4_data.csv', chiptype='all'):
     df.reset_index(drop=True, inplace=True)
     assert df.isnull().sum().sum() == 0
 
-    # prepare dataframes for each chip
-    # chip_dataframes = edict()
-    # for name, group in df.groupby(['PartType']):
-    #     chip_dataframes[str(name)] = group
-    
-    # return dataframe for the selected chip type
+    # dataframe for the selected chip type
     chip_df = None
     if chiptype == 'all':
         chip_df = df
@@ -142,6 +137,13 @@ def reflow_oven(x_pre, y_pre, model):
 
     return x_post, y_post
 
+
+# switch 90 data to 0 data
+def switchOrient(x90, y90):
+    y0 = float(x90)
+    x0 = float(-y90)
+    return x0, y0 
+
 # test standalone
 if __name__=='__main__':
 
@@ -152,8 +154,22 @@ if __name__=='__main__':
     import yaml
     with open('config.yml', 'r')  as file:
         cfg = yaml.load(file, yaml.FullLoader)
-    x_pre, y_pre, x_post, y_post = getMOM4data(cfg)
-    x_post_est, y_post_est = reflow_oven(x_pre, y_pre)
+    # x_pre, y_pre, x_post, y_post = getMOM4data(cfg)
+    x_pre, y_pre, x_post, y_post = getTOYdata(cfg)
+    x_post_est, y_post_est = reflow_oven(x_pre, y_pre, regr_multirf)
+    
+    
+    ''' print statistics '''
+    pre_distances = [np.linalg.norm((x,y)) for x, y in zip(x_pre[:,0], y_pre[:, 1])]
+    post_distances = [np.linalg.norm((x,y)) for x, y in zip(x_post[:,0], y_post[:, 1])]
+    post_distances_est = [np.linalg.norm((x,y)) for x, y in zip(x_post_est[:,0], y_post_est[:, 1])]
+    
+    pre_distances = pd.Series(pre_distances, dtype=float, name='pre_distances').describe()
+    post_distances = pd.Series(post_distances, dtype=float, name='post_distances').describe()
+    post_distances_est = pd.Series(post_distances_est, dtype=float, name='post_distances_est').describe()
+    stats = pd.concat([pre_distances, post_distances, post_distances_est], axis=1)
+    stats.to_csv('statistics.csv')
+    
     print(x_post_est.shape, y_post_est.shape)
     print('='*67)
     print('x_post:\t\t',x_post)
@@ -178,11 +194,4 @@ if __name__=='__main__':
     plt.title("Multi-Output RF")
     plt.legend()
     plt.show()
-
-
-# switch 90 data to 0 data
-def switchOrient(x90, y90):
-    y0 = float(x90)
-    x0 = float(-y90)
-    return x0, y0 
 

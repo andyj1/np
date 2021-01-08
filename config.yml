@@ -27,7 +27,7 @@ np:
   z_samples: 20
 
 MOM4:
-  parttype: R1005 # [R0402, R0603, R1005, all]
+  parttype: R0402 # [R0402, R0603, R1005, all]
   xvar_pre: PRE_X
   yvar_pre: PRE_Y
   xvar_post: POST_X
