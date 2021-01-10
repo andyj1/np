@@ -40,13 +40,7 @@ class SurrogateModel(object):
         # use GPU if available
         self.device = device
         self.dtype = torch.float
-        ''' alternative (default)
-        self.model = SingleTaskGP(X, y)
-        self.mll = ExactMarginalLogLikelihood(likelihood=self.model.likelihood, model=self.model)
-        self.mll.to(dtype)
-        # fit_gpytorch_model uses L-BFGS-B to fit the parameters by default
-        fit_gpytorch_model(self.mll)
-        '''
+
     # custom GP fitting
     def fitGP(self, train_X, train_Y, cfg, toy_bool=False, epoch=0):
         chip = cfg['MOM4']['parttype']
@@ -55,7 +49,7 @@ class SurrogateModel(object):
         model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
         model.to(self.device)
         mll = ExactMarginalLogLikelihood(likelihood=model.likelihood, model=model)
-        mll.to(train_X)     # set to data type
+        mll.to(train_X)     # set to default data type
         mll.to(self.device) # upload to GPU
 
         # default wrapper tor training
@@ -64,7 +58,7 @@ class SurrogateModel(object):
         
         # customize optimizer in 'fit.py' in fit_gpytorch_torch()
         # optimizer need not have a closure
-        optimizer_options = {'lr': 0.05, "maxiter": 100, "disp": True} # for botorch
+        optimizer_options = {'lr': 0.05, "maxiter": self.epochs, "disp": True} # for botorch
         
         ''' define custom optimizer using optimizer class: "self.optimizer_cls" '''
         # self.optimizer = self.optimizer_cls(model.parameters())
@@ -79,8 +73,7 @@ class SurrogateModel(object):
         loss = info_dict['fopt']
         self.model = mll.model
         
-        # alternative to fit_gpytorch_torch
-        # mll.eval() # ??
+        # alternative to fit_gpytorch_torch; more general fit API
         # fit_gpytorch_model(mll, optimizer=fit_gpytorch_torch)
 
         ''' uncomment the following code for custom fit  * but has multiple lengthscale outputs (can't observe lengthscale) '''
@@ -102,15 +95,12 @@ class SurrogateModel(object):
         #     # print(f"lengthscale: {model.covar_module.base_kernel.lengthscale:>4.3f}")
         #     self.optimizer.step()
         
-        
-        
-        if epoch >= 0: 
-            checkpoint = {'state_dict': self.model.state_dict(),
-                          'optimizer' : self.optimizer.state_dict()}
-            if toy_bool:
-                torch.save(checkpoint, f"ckpts/toy/checkpoint_{epoch}.pt")
-            else:
-                torch.save(checkpoint, f"ckpts/{chip}/checkpoint_{epoch}.pt")
+        checkpoint = {'state_dict': self.model.state_dict(),
+                        'optimizer' : self.optimizer.state_dict()}
+        if toy_bool:
+            torch.save(checkpoint, f"ckpts/toy/checkpoint_{epoch}.pt")
+        else:
+            torch.save(checkpoint, f"ckpts/{chip}/checkpoint_{epoch}.pt")
     
     # TODO:
     def fitNP(self, train_X, train_Y, cfg):        

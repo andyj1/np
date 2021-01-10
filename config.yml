@@ -1,10 +1,6 @@
-data:
+toy:
   mu: 0
-  sigma: 5
-  dist_mu: 10
-  dist_sigma: 10
-  angle_mu: 0
-  angle_sigma: 40
+  sigma: 120
 
 acquisition:        # by default, it uses multi-start optimization
   option: 1         # acquisition function type 
@@ -16,9 +12,9 @@ acquisition:        # by default, it uses multi-start optimization
   best_f: 0.1
 
 train:
+  num_iter: 50
   num_epoch: 100
-  num_iter: 100
-  num_samples: 100
+  num_samples: 1000
 
 np:
   num_context: 10
@@ -27,8 +23,14 @@ np:
   z_samples: 20
 
 MOM4:
-  parttype: R0402 # [R0402, R0603, R1005, all]
-  xvar_pre: PRE_X
-  yvar_pre: PRE_Y
-  xvar_post: POST_X
-  yvar_post: POST_Y
+  parttype: R0603 # [R0402, R0603, R1005, all]
+  input_var:
+    - PRE_L
+    - PRE_W
+    # - PRE_A
+    # - SPI_L
+    # - SPI_W
+    # - SPI_VOLUME_DIFF
+  output_var:
+    - POST_L
+    - POST_W

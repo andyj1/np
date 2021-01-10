@@ -13,20 +13,21 @@ from custom.optimize import optimize_acqf
 
 class Acquisition(object):
     def __init__(self, cfg, model, device, beta=None, best_f=None):
-        option = cfg['acquisition']['option']
+        cfg_acq = cfg['acquisition']
         
-        self.beta = 0 if beta is None else cfg['acquisition']['beta']
-        self.best_f = 0 if best_f is None else cfg['acquisition']['best_f']
-        
-        dim = 2
-        # bounds for each column of X
-        bound_limit = cfg['acquisition']['bounds']
-        self.bounds = torch.stack([-torch.ones(dim, device=device) * bound_limit, torch.ones(dim, device=device) * bound_limit])
-        self.q = cfg['acquisition']['q']
-        self.num_restarts = cfg['acquisition']['num_restarts']
-        self.raw_samples = cfg['acquisition']['raw_samples']
+        option = cfg_acq['option']
+        self.beta = 0 if beta is None else cfg_acq['beta']
+        self.best_f = 0 if best_f is None else cfg_acq['best_f']
+        self.q = cfg_acq['q']
+        self.num_restarts = cfg_acq['num_restarts']
+        self.raw_samples = cfg_acq['raw_samples']
         self.candidate = None
         self.acq_value = None
+        
+        # bounds for each column of input
+        dim = len(cfg['MOM4']['input_var'])
+        bound_limit = cfg_acq['bounds']
+        self.bounds = torch.stack([-torch.ones(dim, device=device) * bound_limit, torch.ones(dim, device=device) * bound_limit])
         
         if option == 1:
             # 1. UCF

@@ -1,12 +1,10 @@
 # omit data files (csv)
-data/
-models/
-RFRegressor/models/
-todo.md
+data/*.csv
+RFRegressor/models/*.pkl
 
 # omit pickles
-*.pkl
-*.p
+data_analysis/*.pkl
+data_analysis/*.p
 
 # omit checkpoints
 *.pt

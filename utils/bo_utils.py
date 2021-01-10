@@ -5,10 +5,6 @@ from math import pi, sin
 from numpy import arange, argmax, asarray, vstack
 import numpy as np
 
-# currently only takes into account positions in the x and y direction
-def objective(x, y):
-    return np.linalg.norm((x,y))    
-
 '''
 def surrogate(model, X):
     # catch any warning generated when making a prediction

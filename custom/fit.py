@@ -105,9 +105,11 @@ def fit_gpytorch_torch(
         >>> fit_gpytorch_torch(mll)
         >>> mll.eval()
     """
+
     optim_options = {"maxiter": 100, "disp": True, "lr": 0.05}
     optim_options.update(options or {})
     exclude = optim_options.pop("exclude", None)
+    DISPLAY_FOR_EVERY = optim_options["maxiter"] // 5
     if exclude is not None:
         mll_params = [
             t for p_name, t in mll.named_parameters() if p_name not in exclude
@@ -151,7 +153,7 @@ def fit_gpytorch_torch(
     stopping_criterion = ExpMAStoppingCriterion(
         **_filter_kwargs(ExpMAStoppingCriterion, **optim_options)
     )
-    DISPLAY_FOR_EVERY = optim_options["maxiter"] #10
+    
     train_inputs, train_targets = mll.model.train_inputs, mll.model.train_targets
     while not stop:
         optimizer.zero_grad()
@@ -167,7 +169,7 @@ def fit_gpytorch_torch(
         if optim_options["disp"] and (
             (i + 1) % DISPLAY_FOR_EVERY == 0 or i == (optim_options["maxiter"] - 1)
         ):
-            print(f"\tIter {i + 1:>3}/{optim_options['maxiter']} / Loss: {loss.item():>4.3f}")
+            print(f"\tTrain Epoch: {i + 1:>3}/{optim_options['maxiter']} / Loss: {loss.item():>4.3f}")
         if track_iterations:
             iterations.append(OptimizationIteration(i, loss.item(), time.time() - t1))
         optimizer.step()

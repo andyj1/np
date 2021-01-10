@@ -1,6 +1,14 @@
 # 고영최적화
-
 고영 Self-Alignment Mounter Feedforward Model 최적화 과제 (5차년도)
+
+### Data
+![data](doc/data_demo.png)
+
+### Variables
+![variables](doc/data_var.png)
+
+### Optimization pipeline
+![optimization](doc/pipeline.png)
 
 ## Bayesian Optimization
 
@@ -12,11 +20,19 @@
 - UpperConfidenceBound
 - Expected Improvement
 - q-EI
-- Probability of Improvement
 
-## How to run
-> for configurations, refer to *config.yml*
-> for loading models, refer to */ckpts* directory
+## Procedure
+> run Makefile:
+> ```bash
+> make
+> ```
+1. *imputation.py* handles imputation for three missing rows
+2. *multirf.py* prepares models for reflow oven simulation (under *reflow_oven*)
+3. *main.py* runs the process
+
+> Other
+> *config.yml" contains configuration parameters
+> */ckpts* contains checkpoints for training SingleTaskGP model
 ```python
 python main.py # run with MOM4 data
 python main.py --toy # run with toy data
