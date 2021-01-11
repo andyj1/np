@@ -1,10 +1,9 @@
-# omit data files (csv)
+# omit files
 data/*.csv
-RFRegressor/models/*.pkl
-
-# omit pickles
+reflow_oven//models/*.pkl
 data_analysis/*.pkl
 data_analysis/*.p
+todo.md
 
 # omit checkpoints
 *.pt
