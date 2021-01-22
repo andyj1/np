@@ -1,8 +1,9 @@
-torch==1.7.0
-tqdm==4.54.1
+torch>=1.7.0
+tqdm>=4.54.1
 pyyaml==5.3.1
 matplotlib==3.3.3
-botorch==0.3.2
+botorch>=0.3.2
+tensorboard
 gpytorch
 seaborn
 joblib

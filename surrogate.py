@@ -13,23 +13,26 @@ import torch.optim as optim
 from tqdm import trange
 import sys
 
+import random
+import numpy as np
+
 from NPModel import NP
 from utils.np_utils import log_likelihood, KLD_gaussian, random_split_context_target
 
 class SurrogateModel(object):
-    def __init__(self, train_X, train_Y, device=torch.device('cpu'), epochs=100):
+    def __init__(self, train_X, train_Y, args, cfg, writer, device=torch.device('cpu'), epochs=100):
         super(SurrogateModel, self).__init__()
         
         self.epochs = epochs
         
         # intiialize model for nominal purposes only
-        self.model = SingleTaskGP(train_X=train_X, train_Y=train_Y)        
-        self.model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
-        mll = ExactMarginalLogLikelihood(likelihood=self.model.likelihood, model=self.model)
-        mll.to(train_X)
-        
-        # else:
-        #     self.model = NP(cfg['np']['hidden_dim'] , cfg['np']['decoder_dim'], cfg['np']['z_samples']).to(device)
+        if not args.np :
+            self.model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
+            self.model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
+            mll = ExactMarginalLogLikelihood(likelihood=self.model.likelihood, model=self.model)
+            mll.to(train_X)
+        else:
+            self.model = NP(cfg['np']).to(device)
         
         # optimizer_cls = optim.AdamW
         # optimizer_cls = optim.SparseAdam # doesn't support dense gradients
@@ -40,6 +43,7 @@ class SurrogateModel(object):
         # use GPU if available
         self.device = device
         self.dtype = torch.float
+        self.writer = writer
 
     # custom GP fitting
     def fitGP(self, train_X, train_Y, cfg, toy_bool=False, epoch=0):
@@ -103,27 +107,51 @@ class SurrogateModel(object):
             torch.save(checkpoint, f"ckpts/{chip}/checkpoint_{epoch}.pt")
     
     # TODO:
-    def fitNP(self, train_X, train_Y, cfg):        
+    def fitNP(self, train_X, train_Y, cfg, toy_bool=False, epoch=0):
+        chip = cfg['MOM4']['parttype']
+        info_dict = {}
         self.model.train()
         optimizer = optim.Adam(self.model.parameters(), lr=0.01)
         for epoch in range(self.epochs):
             optimizer.zero_grad()
             # split into context and target
-            x_context, y_context, x_target, y_target = random_split_context_target(train_X, train_Y, cfg['np']['num_context'])
+            # x_context, y_context, x_target, y_target = random_split_context_target(train_X, train_Y, cfg['np']['num_context'])
+            context_idx = random.sample(range(train_X.shape[0]), cfg['np']['num_context'])
+            target_idx = np.delete(range(train_X.shape[0]), context_idx)
+            x_context, x_target = train_X[context_idx], train_X[target_idx]
+            y_context, y_target = train_Y[context_idx], train_Y[target_idx]
+
             # send to gpu
-            x_context = x_context.to(device)
-            y_context = y_context.to(device)
-            x_target = x_target.to(device)
-            y_target = y_target.to(device)
+            x_context = x_context.to(self.device)
+            y_context = y_context.to(self.device)
+            x_target = x_target.to(self.device)
+            y_target = y_target.to(self.device)
+
             # forward pass
-            mu, std, z_mean_all, z_std_all, z_mean, z_std = self.model(x_context, y_context, x_target, y_target)
+            # mu, std, z_mean_all, z_std_all, z_mean, z_std = self.model(x_context, y_context, x_target, y_target)
+            X = [x_context, y_context, x_target]
+            # mu, std, q_target, q_context = self.model(x_context, y_context, x_target, y_target)
+            mu, std, q_target, q_context = self.model(X, y_target)
+
             # loss calculation
-            loss = -log_likelihood(mu, std, y_context) + KLD_gaussian(z_mean_all, z_std_all, z_mean, z_std)
+            # loss = -log_likelihood(mu, std, y_target) + KLD_gaussian(z_mean_all, z_std_all, z_mean, z_std)
+            loss = -log_likelihood(mu, std, y_target) + KLD_gaussian(q_target, q_context)
+
+            self.writer.add_scalar(f"Loss/train_NP_{cfg['train']['num_samples']}_samples_fitNP", loss.item(), epoch)
             # backprop
             loss.backward()
             training_loss = loss.item()
             optimizer.step()
-            print('epoch: {} loss: {}'.format(epoch, training_loss/200))
+            print('epoch: {} loss: {}'.format(epoch, training_loss))
+
+        checkpoint = {'state_dict': self.model.state_dict(),
+                        'optimizer' : self.optimizer.state_dict()}
+        if toy_bool:
+            torch.save(checkpoint, f"ckpts/toy/checkpoint_{epoch}_NP.pt")
+        else:
+            torch.save(checkpoint, f"ckpts/{chip}/checkpoint_{epoch}_NP.pt")
+        info_dict['fopt'] = training_loss
+        return info_dict
         
     '''
     eval: performs evaluation at test points and return mean and lower, upper bounds

@@ -23,6 +23,8 @@ from utils import bo_utils, np_utils, viz_utils
 from utils.utils import (checkParamIsSentToCuda, loadReflowOven, objective,
                          reflow_oven)
 
+from torch.utils.tensorboard import SummaryWriter
+
 # use GPU if available
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'); print('Running on:',str(device).upper())
 dtype = torch.float
@@ -64,8 +66,10 @@ def main():
     NUM_ITER = cfg['train']['num_iter']
     NUM_TRAIN_EPOCH = cfg['train']['num_epoch']
     NUM_SAMPLES = cfg['train']['num_samples']
+    MODEL = 'NP' if args.np else 'GP'
     chip = cfg['MOM4']['parttype']
-    
+
+    writer = SummaryWriter(f'runs/{chip}_{MODEL}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples')
     # load reflow oven regressor
     regr_multirf = loadReflowOven(args)
     input_types = {0: 'PRE -> POST', 1: 'PRE-SPI -> POST'}
@@ -87,10 +91,23 @@ def main():
     targets = torch.FloatTensor([objective(x1, x2) for x1, x2 in zip(outputs[:,0], outputs[:,1])]).unsqueeze(1)
     print('='*10, 'data sizes:', inputs.shape, targets.shape)
 
+    post_mean_list = []
+    post_var_list = []
+    train_post_dist = np.linalg.norm(targets, axis=1)
+    post_mean_list.append(np.mean(train_post_dist))
+    post_var_list.append(np.var(train_post_dist))
+
+    pre_mean_list = []
+    pre_var_list = []
+    train_pre_dist = np.linalg.norm(inputs, axis=1)
+    pre_mean_list.append(np.mean(train_pre_dist))
+    pre_var_list.append(np.var(train_pre_dist))
+
     # initialize model and likelihood
     print('='*5, 'initializaing surrogate model')
     ITER_FROM = 0
-    surrogate = SurrogateModel(inputs, targets, device, epochs=NUM_TRAIN_EPOCH)
+    surrogate = SurrogateModel(inputs, targets, args, cfg,
+                               writer = writer, device = device, epochs=NUM_TRAIN_EPOCH)
     if args.load is not None:
         checkpoint = torch.load(args.load)
         surrogate.model.load_state_dict(checkpoint['state_dict'])
@@ -105,7 +122,14 @@ def main():
     
     # check if the parameter is sent to cuda
     # checkParamIsSentToCuda([next(surrogate.model.parameters()), inputs, targets]) 
-    
+
+    # prepare folders for checkpoints
+    torch.backends.cudnn.benchmark = True
+    folders = ['ckpts','ckpts/R0402','ckpts/R0603','ckpts/R1005','ckpts/all', 'ckpts/toy']
+    for folder in folders:
+        if not os.path.isdir(folder):
+            os.makedirs(folder, exist_ok=True, mode=0o755)
+
     # initial training before acquisition loop
     initial_train_start = time.time()
     print('='*5, 'training (iteration: %s)' % ITER_FROM)
@@ -115,13 +139,6 @@ def main():
         surrogate.fitGP(inputs, targets, cfg, toy_bool=args.toy, epoch=ITER_FROM)
     initial_train_end = time.time()
     print(f'[INFO] initial train time: {initial_train_end-initial_train_start:.3f} sec')
-
-    # prepare folders for checkpoints
-    torch.backends.cudnn.benchmark = True
-    folders = ['ckpts','ckpts/R0402','ckpts/R0603','ckpts/R1005','ckpts/all', 'ckpts/toy']
-    for folder in folders:
-        if not os.path.isdir(folder):
-            os.makedirs(folder, exist_ok=True, mode=0o755)
 
     # training loop
     fig = plt.figure()
@@ -157,7 +174,10 @@ def main():
 
         # re-initialize the models so they are ready for fitting on next iteration and re-train
         retrain_start = time.time()
-        surrogate.fitGP(inputs, targets, cfg, toy_bool=args.toy, epoch=iter)
+        if args.np:
+            info_dict = surrogate.fitNP(inputs, targets, cfg, toy_bool=args.toy, epoch=iter)
+        else :
+            info_dict = surrogate.fitGP(inputs, targets, cfg, toy_bool=args.toy, epoch=iter)
         retrain_end = time.time()
         
         # update progress bar
@@ -172,7 +192,15 @@ def main():
 
         ax.scatter(candidate_inputs[0][0].cpu(), candidate_inputs[0][1].cpu(), s=10, alpha=(iter)*1/(NUM_ITER-ITER_FROM), color='r', label='_nolegend_')
         ax.scatter(candidate_outputs[0][0], candidate_outputs[0][1], s=10,alpha=(iter)*1/(NUM_ITER-ITER_FROM), color='g', label='_nolegend_')
-    
+
+    # Fo results' metrics
+    candidates_pre_dist = np.asarray(candidates_pre_dist)
+    candidates_post_dist = np.asarray(candidates_post_dist)
+    post_mean_list.append(np.mean(candidates_post_dist))
+    post_var_list.append(np.var(candidates_post_dist))
+    pre_mean_list.append(np.mean(candidates_pre_dist))
+    pre_var_list.append(np.var(candidates_pre_dist))
+
     ax.scatter(candidate_inputs[0][0].cpu(), candidate_inputs[0][1].cpu(), s=10, alpha=(iter)*1/(NUM_ITER-ITER_FROM), color='r', label='PRE')
     ax.scatter(candidate_outputs[0][0], candidate_outputs[0][1], s=10,alpha=(iter)*1/(NUM_ITER-ITER_FROM), color='g', label='POST')
     # print all distances at once
@@ -183,12 +211,30 @@ def main():
     cfg['train']['num_samples'] = cfg['train']['num_iter']
     random_inputs, random_outputs = getTOYdata(cfg, regr_multirf)
     ax.scatter(random_outputs[:,0], random_outputs[:,1], s=10, alpha=0.3, color='b', label='Random~N(0,120)')
+    random_outputs_post_dist = np.linalg.norm(random_outputs, axis=1)
+    post_mean_list.append(np.mean(random_outputs_post_dist))
+    post_var_list.append(np.var(random_outputs_post_dist))
+    random_inputs_pre_dist = np.linalg.norm(random_inputs, axis=1)
+    pre_mean_list.append(np.mean(random_inputs_pre_dist))
+    pre_var_list.append(np.var(random_inputs_pre_dist))
     
     # compare with randomly sampled data as pre inputs
     random_samples, _ = getMOM4data(cfg)
     random_samples_outputs = reflow_oven(random_samples[:,0:2], regr_multirf)
     ax.scatter(random_samples_outputs[:,0], random_samples_outputs[:,1], s=10, alpha=0.3, color='magenta', label='Randomly sampled')
-    
+    random_samples_post_dist = np.linalg.norm(random_samples_outputs, axis=1)
+    post_mean_list.append(np.mean(random_samples_post_dist))
+    post_var_list.append(np.var(random_samples_post_dist))
+    random_samples_pre_dist = np.linalg.norm(random_samples, axis=1)
+    pre_mean_list.append(np.mean(random_samples_pre_dist))
+    pre_var_list.append(np.var(random_samples_pre_dist))
+
+    print(f'Pre mean  | Training_samples: {pre_mean_list[0]:4.3f}, Candidates: {pre_mean_list[1]:4.3f}, Random_Normal: {pre_mean_list[2]:4.3f}, Random_samples: {pre_mean_list[3]:4.3f}')
+    print(f'Pre Var   | Training_samples: {pre_var_list[0]:4.3f}, Candidates: {pre_var_list[1]:4.3f}, Random_Normal: {pre_var_list[2]:4.3f}, Random_samples: {pre_var_list[3]:4.3f}')
+
+    print(f'Post mean | Training_samples: {post_mean_list[0]:4.3f}, Candidates: {post_mean_list[1]:4.3f}, Random_Normal: {post_mean_list[2]:4.3f}, Random_samples: {post_mean_list[3]:4.3f}')
+    print(f'Post Var  | Training_samples: {post_var_list[0]:4.3f}, Candidates: {post_var_list[1]:4.3f}, Random_Normal: {post_var_list[2]:4.3f}, Random_samples: {post_var_list[3]:4.3f}')
+
     ax.legend(loc='best',labels=['PRE','POST','Random Normal input POST','Randomly sampled data input POST'])
     params = {"text.color" : "blue",
           "xtick.color" : "crimson",
@@ -219,6 +265,8 @@ def main():
     elif INPUT_TYPE == 1:
         fig.savefig(f'results/reflowoven_pre_all_{chip}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples__(PRE-SPI)_POST.png')
 
+    writer.flush()
+    writer.close()
         
 if __name__ == '__main__':
     main()

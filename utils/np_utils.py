@@ -2,18 +2,20 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from torch.distributions.kl import kl_divergence
 from numpy import arange, argmax, asarray, vstack
 
 # utility functions
 def log_likelihood(mu, std, target):
+    mu = mu.unsqueeze(dim=0)
+    std = std.unsqueeze(dim=0)
     norm = torch.distributions.Normal(mu, std)
+    target = target.unsqueeze(dim=1)
     return norm.log_prob(target).sum(dim=0).mean()
 
 
-def KLD_gaussian(mu_q, std_q, mu_p, std_p):
-    var_p = std_p**2 + 1e-10
-    var_q = std_q**2 + 1e-10
-    return (var_q/var_p + ((mu_q-mu_p)**2) / var_p + torch.log(var_p/var_q) - 1.0).sum() * 0.5
+def KLD_gaussian(q_target, q_context):
+    return kl_divergence(q_target, q_context).mean(dim=0).sum()
 
 
 def random_split_context_target(x, y, n_context):
