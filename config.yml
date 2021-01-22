@@ -17,13 +17,14 @@ train:
   num_samples: 1000
 
 np:
+  input_dim: 3
   num_context: 10
-  hidden_dim: 10
+  hidden_dim: 128
   decoder_dim: 15
   z_samples: 20
 
 MOM4:
-  parttype: R0603 # [R0402, R0603, R1005, all]
+  parttype: R1005 # [R0402, R0603, R1005, all]
   input_var:
     - PRE_L
     - PRE_W

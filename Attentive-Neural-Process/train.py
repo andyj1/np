@@ -18,7 +18,7 @@ def adjust_learning_rate(optimizer, step_num, warmup_step=4000):
         param_group['lr'] = lr
         
 def main():
-    train_dataset = torchvision.datasets.MNIST('./data', train=True, download=False,)
+    train_dataset = torchvision.datasets.MNIST('./data', train=True, download=True,)
     epochs = 200
     model = LatentModel(128).to(device)
     model.train()

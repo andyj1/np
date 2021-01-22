@@ -3,7 +3,7 @@ import math
 import torch
 import torch.nn as nn
 
-
+import sys
 class Linear(nn.Module):
     """
     Linear Module
@@ -38,20 +38,25 @@ class LatentEncoder(nn.Module):
         self.log_sigma = Linear(num_hidden, num_latent)
 
     def forward(self, x, y):
-        
+        print('latent encoder input shape:', x.shape, y.shape)
         # concat location (x) and value (y)
         encoder_input = torch.cat([x,y], dim=-1)
+        print('encoder input shape:',encoder_input.shape)
         
         # project vector with dimension 3 --> num_hidden
         encoder_input = self.input_projection(encoder_input)
+        print('encoder input shape after input projection:',encoder_input.shape)
         
         # self attention layer
         for attention in self.self_attentions:
             encoder_input, _ = attention(encoder_input, encoder_input, encoder_input)
         
+        print('encoder input shape after attention:',encoder_input.shape)
         # mean
         hidden = encoder_input.mean(dim=1)
         hidden = torch.relu(self.penultimate_layer(hidden))
+        
+        print('hidden:', hidden.shape)
         
         # get mu and sigma
         mu = self.mu(hidden)
@@ -62,6 +67,7 @@ class LatentEncoder(nn.Module):
         eps = torch.randn_like(std)
         z = eps.mul(std).add_(mu)
         
+        print(f'latent encoder mu:{mu.shape}, log_sigma:{log_sigma.shape}, z:{z.shape}')
         # return distribution
         return mu, log_sigma, z
     

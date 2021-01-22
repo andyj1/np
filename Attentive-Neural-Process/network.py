@@ -22,6 +22,7 @@ class LatentModel(nn.Module):
         num_targets = target_x.size(1)
 
         # returns [mu,sigma] for the input data and [reparameterized sample from that distribution]
+        print(f'x shape: {context_x.shape}, y shape: {context_y.shape}')
         prior_mu, prior_var, prior = self.latent_encoder(context_x, context_y)
         
         # For training, update the latent vector

@@ -1,6 +1,6 @@
 # omit data files (csv)
 data/*.csv
-RFRegressor/models/*.pkl
+reflow_oven/models/*.pkl
 
 # omit pickles
 data_analysis/*.pkl

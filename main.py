@@ -134,6 +134,7 @@ def main():
     initial_train_start = time.time()
     print('='*5, 'training (iteration: %s)' % ITER_FROM)
     if args.np:
+        print('='*5, '[INFO] initializing Neural Process')
         surrogate.fitNP(inputs, targets, cfg, toy_bool=args.toy)
     else:
         surrogate.fitGP(inputs, targets, cfg, toy_bool=args.toy, epoch=ITER_FROM)
@@ -153,6 +154,8 @@ def main():
         acq_fcn = Acquisition(cfg=cfg, model=surrogate.model, device=device)
         candidate_inputs, acq_value = acq_fcn.optimize()
         acq_end = time.time()        
+        
+        sys.exit(0)
         
         reflowoven_start = time.time()
         candidate_outputs = reflow_oven(candidate_inputs[0][0:2].unsqueeze(0), regr_multirf)
