@@ -21,7 +21,11 @@ def KLD_gaussian(q_target, q_context):
 def random_split_context_target(x, y, n_context):
     ind = np.arange(x.shape[0])
     mask = np.random.choice(ind, size=n_context, replace=False)
-    return [x[mask], y[mask], np.delete(x, mask, axis=0), np.delete(y, mask, axis=0)]
+    x = x.cpu()
+    y = y.cpu()
+    context_x, context_y, target_x, target_y = [x[mask], y[mask], np.delete(x, mask, axis=0), np.delete(y, mask, axis=0)]
+    
+    return context_x, context_y, target_x, target_y
 
 
 def visualize(x, y, x_star, model, epoch, xvar='x', yvar='y', result_path='./'):

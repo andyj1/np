@@ -126,6 +126,7 @@ def optimize_acqf(
                 return_best_only=True,
                 sequential=False,
             )
+            
             candidate_list.append(candidate)
             acq_value_list.append(acq_value)
             candidates = torch.cat(candidate_list, dim=-2)
@@ -156,7 +157,6 @@ def optimize_acqf(
             raw_samples=raw_samples,
             options=options,
         )
-
     batch_limit: int = options.get("batch_limit", num_restarts)
     batch_candidates_list: List[Tensor] = []
     batch_acq_values_list: List[Tensor] = []
@@ -285,8 +285,10 @@ def optimize_acqf_NP(
         candidate_list, acq_value_list = [], []
         candidates = torch.tensor([], device=bounds.device, dtype=bounds.dtype)
         base_X_pending = acq_function.X_pending
+        
+        print('[optimize.py] ranging over q...')
         for i in range(q):
-            candidate, acq_value = optimize_acqf(
+            candidate, acq_value = optimize_acqf_NP(
                 acq_function=acq_function,
                 bounds=bounds,
                 q=1,
@@ -301,6 +303,7 @@ def optimize_acqf_NP(
                 return_best_only=True,
                 sequential=False,
             )
+            print('[optimize.py] candidate:',candidate, 'shape:',candidate.shape)
             candidate_list.append(candidate)
             acq_value_list.append(acq_value)
             candidates = torch.cat(candidate_list, dim=-2)
@@ -331,7 +334,7 @@ def optimize_acqf_NP(
             raw_samples=raw_samples,
             options=options,
         )
-
+        
     batch_limit: int = options.get("batch_limit", num_restarts)
     batch_candidates_list: List[Tensor] = []
     batch_acq_values_list: List[Tensor] = []
@@ -339,6 +342,8 @@ def optimize_acqf_NP(
     for start_idx in start_idcs:
         end_idx = min(start_idx + batch_limit, num_restarts)
         # optimize using random restart optimization
+        print('entered get_candidates_scipy...')
+
         batch_candidates_curr, batch_acq_values_curr = gen_candidates_scipy(
             initial_conditions=batch_initial_conditions[start_idx:end_idx],
             acquisition_function=acq_function,

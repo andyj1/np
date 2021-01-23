@@ -5,7 +5,7 @@ import torch.nn as nn
 from botorch.models import SingleTaskGP
 from gpytorch.constraints.constraints import GreaterThan
 from gpytorch.mlls import ExactMarginalLogLikelihood
-from botorch.fit import fit_gpytorch_model
+# from botorch.fit import fit_gpytorch_model
 from custom.fit import fit_gpytorch_torch
 
 from torch.optim import SGD
@@ -47,7 +47,8 @@ class SurrogateModel(object):
     # custom GP fitting
     def fitGP(self, train_X, train_Y, cfg, toy_bool=False, epoch=0):
         chip = cfg['MOM4']['parttype']
-        # re-initialize model
+        
+        # re-initialize model because GPyTorch's SingleTaskGP taks in X, Y at the initialization
         model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
         model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
         model.to(self.device)
@@ -110,16 +111,20 @@ class SurrogateModel(object):
     def fitNP(self, train_X, train_Y, cfg, toy_bool=False, epoch=0):
         chip = cfg['MOM4']['parttype']
         info_dict = {}
+        # not re-initializing the model (already defined at self.model)
         self.model.train()
         optimizer = optim.Adam(self.model.parameters(), lr=0.01)
+
         for epoch in range(self.epochs):
             optimizer.zero_grad()
             # split into context and target
-            # x_context, y_context, x_target, y_target = random_split_context_target(train_X, train_Y, cfg['np']['num_context'])
-            context_idx = random.sample(range(train_X.shape[0]), cfg['np']['num_context'])
-            target_idx = np.delete(range(train_X.shape[0]), context_idx)
-            x_context, x_target = train_X[context_idx], train_X[target_idx]
-            y_context, y_target = train_Y[context_idx], train_Y[target_idx]
+            x_context, y_context, x_target, y_target = random_split_context_target(train_X, train_Y, cfg['np']['num_context'])
+            # context_idx = random.sample(range(train_X.shape[0]), cfg['np']['num_context'])
+            # target_idx = np.delete(range(train_X.shape[0]), context_idx)
+            # x_context, x_target = train_X[context_idx], train_X[target_idx]
+            # y_context, y_target = train_Y[context_idx], train_Y[target_idx]
+
+            print(f'x_context: {x_context.shape}, y_context:{y_context.shape}, x_target:{x_target.shape}, y_target:{y_target.shape}')
 
             # send to gpu
             x_context = x_context.to(self.device)
@@ -128,26 +133,26 @@ class SurrogateModel(object):
             y_target = y_target.to(self.device)
 
             # forward pass
-            # mu, std, z_mean_all, z_std_all, z_mean, z_std = self.model(x_context, y_context, x_target, y_target)
-            # mu, std, q_target, q_context = self.model(x_context, y_context, x_target, y_target)
-            y_pred, sigma, kl, loss = self.model(x_context, y_context, x_target, y_target)
+            mu, sigma, log_p, kl, loss = self.model(x_context, y_context, x_target, y_target)
 
             self.writer.add_scalar(f"Loss/train_NP_{cfg['train']['num_samples']}_samples_fitNP", loss.item(), epoch)
+
             # backprop
             loss.backward()
             training_loss = loss.item()
             optimizer.step()
             print('epoch: {} loss: {}'.format(epoch, training_loss))
-
+        
         checkpoint = {'state_dict': self.model.state_dict(),
-                        'optimizer' : self.optimizer.state_dict()}
+                      'optimizer' : self.optimizer.state_dict()}
         if toy_bool:
             torch.save(checkpoint, f"ckpts/toy/checkpoint_{epoch}_NP.pt")
         else:
             torch.save(checkpoint, f"ckpts/{chip}/checkpoint_{epoch}_NP.pt")
+
         info_dict['fopt'] = training_loss
         return info_dict
-        
+
     '''
     evaluate: performs evaluation at test points and return mean and lower, upper bounds
     '''
@@ -160,20 +165,5 @@ class SurrogateModel(object):
                 # upper and lower confidence bounds (2 standard deviations from the mean)
                 lower, upper = posterior.mvn.confidence_region()
             return posterior.mean.cpu().numpy(), (lower.cpu().numpy(), upper.cpu().numpy())
-        
-    # TODO:
-    def evalNP(self, train_X, train_Y, ):
-        mu, std = None, None
-        # random z sample from normal of size (1, z_dim),
-        # get mu, std from x_target and z_sample (xz to y)
-        x_context, y_context, x_target, y_target = random_split_context_target(train_X, train_Y, cfg['np']['num_context'])
-        # send to gpu
-        x_context = x_context.to(device)
-        y_context = y_context.to(device)
-        x_target = x_target.to(device)
-        y_target = y_target.to(device)
-        
-        # forward pass
-        mu, std, _, z_mean_all, z_std_all, z_mean, z_std = self.model(x_context, y_context, x_target, y_target)
-        return mu, std
-        
+
+

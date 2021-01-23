@@ -128,6 +128,7 @@ def gen_candidates_scipy(
         X=torch.from_numpy(res.x).to(initial_conditions).view(shapeX).contiguous(),
         fixed_features=fixed_features,
     )
+    print(f'[ACQ - gen.py] candidate shape:{candidates.shape}')
     clamped_candidates = columnwise_clamp(
         X=candidates, lower=lower_bounds, upper=upper_bounds, raise_on_violation=True
     )

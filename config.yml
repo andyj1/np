@@ -6,20 +6,20 @@ acquisition:        # by default, it uses multi-start optimization
   option: 1         # acquisition function type 
   q: 1              # smallest number of candidates to be considered jointly
   num_restarts: 10  # number of starting points for multi-start acquisition function
-  raw_samples: 40   # number of samples for initialization
+  raw_samples: 10   # number of samples for initialization
   bounds: 120       # 2xd tensor of lower and upper bounds for each column of X
   beta: 0.2
   best_f: 0.1
 
 train:
-  num_iter: 50
-  num_epoch: 100
-  num_samples: 1000
+  num_iter: 5
+  num_epoch: 10
+  num_samples: 50
 
 np:
   input_dim: 3
-  num_context: 10
-  hidden_dim: 128
+  num_context: 40
+  hidden_dim: 32
   decoder_dim: 15
   z_samples: 20
 

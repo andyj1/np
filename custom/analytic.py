@@ -299,6 +299,10 @@ class UpperConfidenceBound(AnalyticAcquisitionFunction):
         """
         self.beta = self.beta.to(X)
         posterior = self._get_posterior(X=X)
+        '''
+            _get_posterior from the abstract class
+            returns a GPyTorchPosterior (single-output mvn) class posterior
+        '''
         batch_shape = X.shape[:-2]
         mean = posterior.mean.view(batch_shape)
         variance = posterior.variance.view(batch_shape)

@@ -87,6 +87,10 @@ def main():
         print('='*10, 'Loading MOM4 data: %s...' % data_path)
         inputs, outputs = getMOM4data(cfg)
 
+    optimize_np_bool = False
+    if args.np:
+        optimize_np_bool = True
+        
     # objective function: to minimize the distance from  the POST to origin toward zero
     targets = torch.FloatTensor([objective(x1, x2) for x1, x2 in zip(outputs[:,0], outputs[:,1])]).unsqueeze(1)
     print('='*10, 'data sizes:', inputs.shape, targets.shape)
@@ -146,17 +150,18 @@ def main():
     ax = fig.add_subplot()
     candidates_pre_dist, candidates_post_dist = [], []
     t = trange(ITER_FROM+1, NUM_ITER+1, 1)
+    
+    # surrogate.model is NeuralProcess (already defined)
+    acq_fcn = Acquisition(cfg=cfg, model=surrogate.model, device=device)
     for iter in t:
         iter_start = time.time()
 
         # optimize acquisition functions and get new observations
         acq_start = time.time()
-        acq_fcn = Acquisition(cfg=cfg, model=surrogate.model, device=device)
-        candidate_inputs, acq_value = acq_fcn.optimize()
-        acq_end = time.time()        
-        
-        sys.exit(0)
-        
+        candidate_inputs, acq_value = acq_fcn.optimize(np=optimize_np_bool)
+        acq_fcn.raw_samples += 1
+        acq_end = time.time()
+    
         reflowoven_start = time.time()
         candidate_outputs = reflow_oven(candidate_inputs[0][0:2].unsqueeze(0), regr_multirf)
         reflowoven_end = time.time()
@@ -174,14 +179,15 @@ def main():
 
         print()
         print('='*5, 'candidate:', inputs.shape, targets.shape)
-
+        
         # re-initialize the models so they are ready for fitting on next iteration and re-train
         retrain_start = time.time()
         if args.np:
-            info_dict = surrogate.fitNP(inputs, targets, cfg, toy_bool=args.toy, epoch=iter)
-        else :
-            info_dict = surrogate.fitGP(inputs, targets, cfg, toy_bool=args.toy, epoch=iter)
+            surrogate.fitNP(inputs, targets, cfg, toy_bool=args.toy, epoch=iter)
+        else:
+            surrogate.fitGP(inputs, targets, cfg, toy_bool=args.toy, epoch=iter)
         retrain_end = time.time()
+
         
         # update progress bar
         t.set_description(
@@ -243,7 +249,6 @@ def main():
           "xtick.color" : "crimson",
           "ytick.color" : "crimson"}
     plt.rcParams.update(params)
-    # ax.legend(loc='lower right')
     ax.set_xlabel('x (\u03BCm)')
     ax.set_ylabel('y (\u03BCm)')
     ax.set_xlim([-120, 120])
@@ -260,7 +265,6 @@ def main():
     random_samples_outputs = pd.Series(random_samples_outputs, dtype=float, name='Randomly sampled input').describe()
     stats = pd.concat([candidates_pre_dist, candidates_post_dist, random_outputs, random_samples_outputs], axis=1)
     stats.to_csv(f'./results/{chip}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples_stats.csv')
-
     # plt.show()
     
     if INPUT_TYPE == 0:

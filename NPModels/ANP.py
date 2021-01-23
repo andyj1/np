@@ -10,6 +10,8 @@ from utils.np_utils import log_likelihood, KLD_gaussian, random_split_context_ta
 
 from collections import OrderedDict
 
+from botorch.posteriors.posterior import Posterior
+
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 from typing import Any, Optional, List
 from contextlib import ExitStack
@@ -22,7 +24,7 @@ from botorch.models.utils import add_output_dim
 import math
 
 from utils.np_utils import kl_div
-from utils.modules import LatentEncoder, DeterministicEncoder, Decoder
+from utils.anp_modules import LatentEncoder, DeterministicEncoder, Decoder
 
 class ANP(nn.Module):
     def __init__(self, cfg):  # hidden_dim, decoder_dim, z_samples:
@@ -33,8 +35,15 @@ class ANP(nn.Module):
         self.deterministic_encoder = DeterministicEncoder(num_hidden, num_hidden)   # for r
         self.decoder = Decoder(num_hidden)
         self.BCELoss = nn.BCELoss()
+        
+        out_dim = 1
+        self.num_outputs = out_dim
+        
+        self.r = None
+        self.z = None
     
-    # training
+    # training (and evaluating) 
+    # same as *fit.py* in custom
     def forward(self, context_x, context_y, target_x, target_y=None):
         
         # add batch size dimension at 0
@@ -49,13 +58,13 @@ class ANP(nn.Module):
         # returns [mu,sigma] for the input data and [reparameterized sample from that distribution]
         prior_mu, prior_var, prior = self.latent_encoder(context_x, context_y)
         
-        # For training, update the latent vector
+        # For training, we need prior AND posterior
         posterior_mu, posterior_var = None, None
-        if target_y is not None:
+        if target_y is not None: # training mode
             posterior_mu, posterior_var, posterior = self.latent_encoder(target_x, target_y)
             z = posterior
         
-        # For Generation keep the prior distribution as the latent vector
+        # otherwise for testing, only need prior z (from context)
         else:
             z = prior
 
@@ -65,12 +74,15 @@ class ANP(nn.Module):
         r = self.deterministic_encoder(context_x, context_y, target_x) # [B, T_target, H]
         
         # prediction of target y given r, z, target_x
-        dist, y_pred, sigma = self.decoder(r, z, target_x)
+        dist, mu, sigma = self.decoder(r, z, target_x)
         
         # For Training
         if target_y is not None:
+            log_p = dist.log_prob(target_y)
+            posterior = self.latent_encoder(target_x, target_y)
+            
             # get log probability
-            bce_loss = self.BCELoss(torch.sigmoid(y_pred), target_y)
+            bce_loss = self.BCELoss(torch.sigmoid(mu), target_y)
             
             # get KL divergence between prior and posterior
             kl = kl_div(prior_mu, prior_var, posterior_mu, posterior_var)
@@ -78,17 +90,25 @@ class ANP(nn.Module):
             # maximize prob and minimize KL divergence
             loss = bce_loss + kl
         
-        # For Generation
+        # For Generation (testing)
         else:
             log_p = None
             kl = None
             loss = None
         
-        print('z:', z.shape, 'r:', r.shape, 'y_pred:',y_pred.shape, 'loss:', loss.item())
-        
-        return y_pred, sigma, kl, loss
-
-    # evaluate
-    # def evaluate(self, context_x, context_y, target_x, None):
+        # update r and z
+        self.r = r
+        self.z = z
+        print('[ANP FORWARD PASS] z:', z.shape, 'r:', r.shape, 'mu:',mu.shape, 'loss:', loss.item())
+        print()
+        return mu, sigma, log_p, kl, loss
+    
+    
+    # posterior generation assuming context x and y already formed r and z
+    # returns single-output mvn Posterior class
+    def make_np_posterior(self, target_x) -> Posterior:
+        print(f'[MAKE_NP_POSTERIOR] r:{self.r.shape}, z:{self.z.shape}, target_x:{target_x.permute(1,0,2).shape}')
+        dist, _, _ =  self.decoder(self.r, self.z, target_x.permute(1,0,2))
+        return dist
         
         

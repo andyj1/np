@@ -121,7 +121,9 @@ class Decoder(nn.Module):
         target_x = self.target_projection(target_x)
         
         # concat all vectors (r,z,target_x)
-        hidden = torch.cat([torch.cat([r,z], dim=-1), target_x], dim=-1)
+        print(f'[ANP DECODER] r:{r.shape},z:{z.shape},target_x:{target_x.shape}')
+        representation = torch.cat([r,z], dim=-1)
+        hidden = torch.cat([representation, target_x], dim=-1)
         
         # mlp layers
         for linear in self.linears:
@@ -130,16 +132,16 @@ class Decoder(nn.Module):
         # get mu and sigma
         # TODO
         hidden = self.final_projection(hidden)
-        print('hidden dimension:',hidden.shape)
-        vals = torch.split(hidden, 2, dim=-1)
-        for i in vals:
-            print(i.size())
-        mu, log_sigma = vals[0], vals[1]
-        print(f'mu shape: {mu.shape}, sigma shape:{log_sigma.shape}')
-        sigma = 0.1 + 0.9 * nn.Softplus(log_sigma)
-        dist = torch.distributions.Independent(torch.distributions.Normal(loc=mu, scale=sigma))
+        mu, log_sigma = torch.split(hidden, 1, dim=-1)
+        # print(f'mu shape: {mu.shape}, sigma shape:{log_sigma.shape}')
+        sigma = 0.1 + 0.9 * nn.Softplus()(log_sigma)
         
-        return dist, mu, sigma
+        # reshape for MultivariateNormal distribution
+        loc = mu.squeeze()
+        scale = sigma.squeeze()
+        mvn_dist = torch.distributions.MultivariateNormal(loc, scale_tril=torch.diag(scale))
+        
+        return mvn_dist, mu, sigma
 
 class MultiheadAttention(nn.Module):
     """
