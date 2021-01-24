@@ -174,7 +174,7 @@ for idx, group in enumerate([temp1, temp2, temp3]):
     ax.set_title(name)
     '''
 fig.tight_layout()
-plt.show()
+# plt.show()
 
 
 # In[8]:
@@ -216,7 +216,7 @@ for temp_idx, temp_df in enumerate(temp_dfs):
     ax.grid()
     ax.set_title(missing_chip[temp_idx])
 fig.tight_layout()
-plt.show()
+# plt.show()
 # fig.savefig('./stencils.png')
 
 # 2. scipy - KMeans
@@ -226,7 +226,7 @@ plt.show()
 #     centroids, _ = kmeans(temp_df, k_or_guess=25, thresh=1e-7)
 #     plt.scatter(temp_df[xavg], temp_df[yavg], cmap=plt.get_cmap('jet'), s=50, alpha=0.5) # c=kmeans.labels_.astype(float),
 #     plt.scatter(centroids[:, 0], centroids[:, 1], c='red', s=50)
-#     plt.show()v
+#     # plt.show()v
 
 #     idx, _ = vq(temp1_df, centroids)
 #     # print(idx) # idx = lists the centroid numbers for each row (of SPI)

@@ -18,11 +18,11 @@ class LatentModel(nn.Module):
         self.BCELoss = nn.BCELoss()
         
     def forward(self, context_x, context_y, target_x, target_y=None):
-        print('context_x, context_y, target_x, target_y ', context_x.shape, context_y.shape, target_x.shape, target_y.shape)
+        # print('context_x, context_y, target_x, target_y ', context_x.shape, context_y.shape, target_x.shape, target_y.shape)
         num_targets = target_x.size(1)
 
         # returns [mu,sigma] for the input data and [reparameterized sample from that distribution]
-        print(f'x shape: {context_x.shape}, y shape: {context_y.shape}')
+        # print(f'x shape: {context_x.shape}, y shape: {context_y.shape}')
         prior_mu, prior_var, prior = self.latent_encoder(context_x, context_y)
         
         # For training, update the latent vector
@@ -60,7 +60,7 @@ class LatentModel(nn.Module):
             kl = None
             loss = None
         
-        print('z:', z.shape, 'r:', r.shape, 'y_pred:',y_pred.shape, 'loss:', loss.item())
+        # print('z:', z.shape, 'r:', r.shape, 'y_pred:',y_pred.shape, 'loss:', loss.item())
         
         return y_pred, kl, loss
     

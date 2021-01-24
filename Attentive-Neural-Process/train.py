@@ -26,6 +26,9 @@ def main():
     optim = torch.optim.Adam(model.parameters(), lr=1e-4)
     writer = SummaryWriter()
     global_step = 0
+    
+    if not os.path.isdir('./checkpoint'):
+        os.makedirs('./checkpoint')
     for epoch in range(epochs):
         dloader = DataLoader(train_dataset, batch_size=16, collate_fn=collate_fn, shuffle=True, num_workers=16)
         pbar = tqdm(dloader)

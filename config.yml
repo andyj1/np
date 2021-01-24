@@ -13,7 +13,7 @@ acquisition:        # by default, it uses multi-start optimization
 
 train:
   num_iter: 5
-  num_epoch: 10
+  num_epoch: 1
   num_samples: 50
 
 np:

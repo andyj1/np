@@ -115,7 +115,7 @@ class SurrogateModel(object):
         self.model.train()
         optimizer = optim.Adam(self.model.parameters(), lr=0.01)
 
-        for epoch in range(self.epochs):
+        for train_epoch in range(self.epochs):
             optimizer.zero_grad()
             # split into context and target
             x_context, y_context, x_target, y_target = random_split_context_target(train_X, train_Y, cfg['np']['num_context'])
@@ -124,7 +124,7 @@ class SurrogateModel(object):
             # x_context, x_target = train_X[context_idx], train_X[target_idx]
             # y_context, y_target = train_Y[context_idx], train_Y[target_idx]
 
-            print(f'x_context: {x_context.shape}, y_context:{y_context.shape}, x_target:{x_target.shape}, y_target:{y_target.shape}')
+            print(f'[INFO] x_context: {x_context.shape}, y_context:{y_context.shape}, x_target:{x_target.shape}, y_target:{y_target.shape}')
 
             # send to gpu
             x_context = x_context.to(self.device)
@@ -135,13 +135,13 @@ class SurrogateModel(object):
             # forward pass
             mu, sigma, log_p, kl, loss = self.model(x_context, y_context, x_target, y_target)
 
-            self.writer.add_scalar(f"Loss/train_NP_{cfg['train']['num_samples']}_samples_fitNP", loss.item(), epoch)
+            self.writer.add_scalar(f"Loss/train_NP_{cfg['train']['num_samples']}_samples_fitNP", loss.item(), train_epoch)
 
             # backprop
             loss.backward()
             training_loss = loss.item()
             optimizer.step()
-            print('epoch: {} loss: {}'.format(epoch, training_loss))
+            print('[INFO] train_epoch: {}/{}, loss: {}'.format(train_epoch+1, self.epochs, training_loss))
         
         checkpoint = {'state_dict': self.model.state_dict(),
                       'optimizer' : self.optimizer.state_dict()}
@@ -153,17 +153,17 @@ class SurrogateModel(object):
         info_dict['fopt'] = training_loss
         return info_dict
 
-    '''
-    evaluate: performs evaluation at test points and return mean and lower, upper bounds
-    '''
-    def evaluate(self, test_X):
-        posterior, variance = None, None
-        if self.model is not None:
-            self.model.eval() # set eval mode
-            with torch.no_grad():
-                posterior = self.model.posterior(test_X)
-                # upper and lower confidence bounds (2 standard deviations from the mean)
-                lower, upper = posterior.mvn.confidence_region()
-            return posterior.mean.cpu().numpy(), (lower.cpu().numpy(), upper.cpu().numpy())
+    # '''
+    # evaluate: performs evaluation at test points and return mean and lower, upper bounds
+    # '''
+    # def evaluate(self, test_X):
+    #     posterior, variance = None, None
+    #     if self.model is not None:
+    #         self.model.eval() # set eval mode
+    #         with torch.no_grad():
+    #             posterior = self.model.posterior(test_X)
+    #             # upper and lower confidence bounds (2 standard deviations from the mean)
+    #             lower, upper = posterior.mvn.confidence_region()
+    #         return posterior.mean.cpu().numpy(), (lower.cpu().numpy(), upper.cpu().numpy())
 
 

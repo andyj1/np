@@ -121,7 +121,6 @@ class Decoder(nn.Module):
         target_x = self.target_projection(target_x)
         
         # concat all vectors (r,z,target_x)
-        print(f'[ANP DECODER] r:{r.shape},z:{z.shape},target_x:{target_x.shape}')
         representation = torch.cat([r,z], dim=-1)
         hidden = torch.cat([representation, target_x], dim=-1)
         

@@ -27,9 +27,9 @@ from botorch.models.gpytorch import GPyTorchModel
 from botorch.models.model import Model
 from botorch.posteriors.posterior import Posterior
 from botorch.sampling.samplers import SobolQMCNormalSampler
-from botorch.utils.transforms import convert_to_target_pre_hook, t_batch_mode_transform
+from botorch.utils.transforms import (convert_to_target_pre_hook,
+                                      t_batch_mode_transform)
 from torch import Tensor
-from torch.distributions import Normal
 
 
 class AnalyticAcquisitionFunction(AcquisitionFunction, ABC):
@@ -131,6 +131,9 @@ class UpperConfidenceBound(AnalyticAcquisitionFunction):
             design points `X`.
         """
         self.beta = self.beta.to(target_x)
+        
+        print('[INFO] UCB forwarding... target_x:',target_x.shape)
+        
         posterior = self._get_posterior(X=target_x)
         '''
             _get_posterior from the abstract class

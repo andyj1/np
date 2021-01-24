@@ -52,7 +52,11 @@ class ANP(nn.Module):
         target_x = target_x.unsqueeze(0)
         target_y = target_y.unsqueeze(0)
         
-        print('context_x, context_y, target_x, target_y ', context_x.shape, context_y.shape, target_x.shape, target_y.shape)
+        # =======save contexts for make_np_posterior============
+        self.context_x = context_x
+        self.context_y = context_y
+        
+        # print('context_x, context_y, target_x, target_y ', context_x.shape, context_y.shape, target_x.shape, target_y.shape)
         num_targets = target_x.size(1)
 
         # returns [mu,sigma] for the input data and [reparameterized sample from that distribution]
@@ -75,6 +79,7 @@ class ANP(nn.Module):
         
         # prediction of target y given r, z, target_x
         dist, mu, sigma = self.decoder(r, z, target_x)
+        print('[INFO] Model forwarding... z:', z.shape, 'r:', r.shape, 'target_x:',target_x.shape)
         
         # For Training
         if target_y is not None:
@@ -99,16 +104,21 @@ class ANP(nn.Module):
         # update r and z
         self.r = r
         self.z = z
-        print('[ANP FORWARD PASS] z:', z.shape, 'r:', r.shape, 'mu:',mu.shape, 'loss:', loss.item())
+        # print('[ANP FORWARD PASS] z:', z.shape, 'r:', r.shape, 'mu:',mu.shape, 'loss:', loss.item())
         print()
         return mu, sigma, log_p, kl, loss
     
     
     # posterior generation assuming context x and y already formed r and z
     # returns single-output mvn Posterior class
+    # this is called in analytic_np - base class for the acquisition functions
     def make_np_posterior(self, target_x) -> Posterior:
-        print(f'[MAKE_NP_POSTERIOR] r:{self.r.shape}, z:{self.z.shape}, target_x:{target_x.permute(1,0,2).shape}')
-        dist, _, _ =  self.decoder(self.r, self.z, target_x.permute(1,0,2))
+        target_x = target_x.permute(1,0,2)
+        assert self.r.shape[1] == self.z.shape[1] == target_x.shape[1], \
+            f'r:{self.r.shape}, z:{self.z.shape}, target_x:{target_x.shape}'
+            
+        print(f'[INFO] decoder forwarding... r:{self.r.shape},z:{self.z.shape},target_x:{target_x.shape}')
+        dist, _, _ =  self.decoder(self.r, self.z, target_x)
         return dist
         
         

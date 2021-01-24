@@ -6,6 +6,10 @@ reflow_oven/models/*.pkl
 data_analysis/*.pkl
 data_analysis/*.p
 
+runs/
+
+todo.md
+
 # omit checkpoints
 *.pt
 

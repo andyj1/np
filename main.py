@@ -86,10 +86,6 @@ def main():
         data_path = './data/imputed_data.csv'
         print('='*10, 'Loading MOM4 data: %s...' % data_path)
         inputs, outputs = getMOM4data(cfg)
-
-    optimize_np_bool = False
-    if args.np:
-        optimize_np_bool = True
         
     # objective function: to minimize the distance from  the POST to origin toward zero
     targets = torch.FloatTensor([objective(x1, x2) for x1, x2 in zip(outputs[:,0], outputs[:,1])]).unsqueeze(1)
@@ -137,8 +133,11 @@ def main():
     # initial training before acquisition loop
     initial_train_start = time.time()
     print('='*5, 'training (iteration: %s)' % ITER_FROM)
+    
+    optimize_np_bool = False
     if args.np:
         print('='*5, '[INFO] initializing Neural Process')
+        optimize_np_bool = True
         surrogate.fitNP(inputs, targets, cfg, toy_bool=args.toy)
     else:
         surrogate.fitGP(inputs, targets, cfg, toy_bool=args.toy, epoch=ITER_FROM)
@@ -152,14 +151,16 @@ def main():
     t = trange(ITER_FROM+1, NUM_ITER+1, 1)
     
     # surrogate.model is NeuralProcess (already defined)
-    acq_fcn = Acquisition(cfg=cfg, model=surrogate.model, device=device)
+    acq_fcn = Acquisition(cfg=cfg, model=surrogate.model, device=device, np_bool=args.np)
     for iter in t:
         iter_start = time.time()
 
         # optimize acquisition functions and get new observations
         acq_start = time.time()
         candidate_inputs, acq_value = acq_fcn.optimize(np=optimize_np_bool)
-        acq_fcn.raw_samples += 1
+        
+        print()
+        print('[INFO] iter:',iter,'CANDIDATE DRAWN.../shape:',candidate_inputs.shape,'candidate:',candidate_inputs)
         acq_end = time.time()
     
         reflowoven_start = time.time()
@@ -178,10 +179,11 @@ def main():
         targets = torch.cat([targets, new_target], dim=0)
 
         print()
-        print('='*5, 'candidate:', inputs.shape, targets.shape)
+        print('[INFO] before re-training, inputs:', inputs.shape, 'targets:',targets.shape)
         
         # re-initialize the models so they are ready for fitting on next iteration and re-train
         retrain_start = time.time()
+        print('[INFO] RETRAINING...')
         if args.np:
             surrogate.fitNP(inputs, targets, cfg, toy_bool=args.toy, epoch=iter)
         else:
@@ -199,8 +201,10 @@ def main():
                     f'{CBLUE} dist: {pre_dist:.3f} -> {post_dist:.3f} {CEND}', 
             refresh=False)
 
-        ax.scatter(candidate_inputs[0][0].cpu(), candidate_inputs[0][1].cpu(), s=10, alpha=(iter)*1/(NUM_ITER-ITER_FROM), color='r', label='_nolegend_')
-        ax.scatter(candidate_outputs[0][0], candidate_outputs[0][1], s=10,alpha=(iter)*1/(NUM_ITER-ITER_FROM), color='g', label='_nolegend_')
+        ax.scatter(candidate_inputs[0][0].cpu(), candidate_inputs[0][1].cpu(), \
+                    s=10, alpha=(iter)*1/(NUM_ITER-ITER_FROM), color='r', label='_nolegend_')
+        ax.scatter(candidate_outputs[0][0], candidate_outputs[0][1], \
+                    s=10,alpha=(iter)*1/(NUM_ITER-ITER_FROM), color='g', label='_nolegend_')
 
     # Fo results' metrics
     candidates_pre_dist = np.asarray(candidates_pre_dist)

@@ -40,7 +40,7 @@ def optimize_acqf(
     fixed_features: Optional[Dict[int, float]] = None,
     post_processing_func: Optional[Callable[[Tensor], Tensor]] = None,
     batch_initial_conditions: Optional[Tensor] = None,
-    return_best_only: bool = True,
+    return_best_only: bool = True, # calls the same procedure for exploitation step in `gen.py`
     sequential: bool = False,
     **kwargs: Any,
 ) -> Tuple[Tensor, Tensor]:
@@ -187,6 +187,7 @@ def optimize_acqf(
     if post_processing_func is not None:
         batch_candidates = post_processing_func(batch_candidates)
 
+    # exploitation
     if return_best_only:
         best = torch.argmax(batch_acq_values.view(-1), dim=0)
         batch_candidates = batch_candidates[best]
@@ -286,7 +287,6 @@ def optimize_acqf_NP(
         candidates = torch.tensor([], device=bounds.device, dtype=bounds.dtype)
         base_X_pending = acq_function.X_pending
         
-        print('[optimize.py] ranging over q...')
         for i in range(q):
             candidate, acq_value = optimize_acqf_NP(
                 acq_function=acq_function,
@@ -303,7 +303,6 @@ def optimize_acqf_NP(
                 return_best_only=True,
                 sequential=False,
             )
-            print('[optimize.py] candidate:',candidate, 'shape:',candidate.shape)
             candidate_list.append(candidate)
             acq_value_list.append(acq_value)
             candidates = torch.cat(candidate_list, dim=-2)
@@ -318,7 +317,7 @@ def optimize_acqf_NP(
         return candidates, torch.stack(acq_value_list)
 
     options = options or {}
-
+    
     if batch_initial_conditions is None:
         ic_gen = (
             gen_one_shot_kg_initial_conditions
@@ -334,16 +333,22 @@ def optimize_acqf_NP(
             raw_samples=raw_samples,
             options=options,
         )
-        
+    
+    print('raw_samples',raw_samples)
+    print('batch_initial_conditions:',batch_initial_conditions.shape)
+    # import sys
+    # sys.exit(0)
+
     batch_limit: int = options.get("batch_limit", num_restarts)
     batch_candidates_list: List[Tensor] = []
     batch_acq_values_list: List[Tensor] = []
     start_idcs = list(range(0, num_restarts, batch_limit))
+    
     for start_idx in start_idcs:
         end_idx = min(start_idx + batch_limit, num_restarts)
+        print('end_idx:',end_idx)
         # optimize using random restart optimization
-        print('entered get_candidates_scipy...')
-
+        
         batch_candidates_curr, batch_acq_values_curr = gen_candidates_scipy(
             initial_conditions=batch_initial_conditions[start_idx:end_idx],
             acquisition_function=acq_function,
