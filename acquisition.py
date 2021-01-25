@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-
-
-import numpy as np
+'''
+current acquisition functions support only q=1 (single-outcome case)
+for multi-objective, there are multi-objective acquisition functions available,
+given the surrogate model can output multi-outcome (for multi-output objective)
+'''
 import torch
 from botorch.acquisition import qExpectedImprovement
 # from botorch.acquisition.acquisition import AcquisitionFunction
@@ -9,7 +11,7 @@ from botorch.acquisition import qExpectedImprovement
 from botorch.sampling import IIDNormalSampler, SobolQMCNormalSampler
 
 class Acquisition(object):
-    def __init__(self, cfg, model, device, beta=None, best_f=None, np_bool=False):
+    def __init__(self, cfg, model, device, beta=None, best_f=None, model_type='GP'):
         cfg_acq = cfg['acquisition']
         
         option = cfg_acq['option']
@@ -26,9 +28,12 @@ class Acquisition(object):
         bound_limit = cfg_acq['bounds']
         self.bounds = torch.stack([-torch.ones(dim, device=device) * bound_limit, torch.ones(dim, device=device) * bound_limit])
         
-        from custom.analytic import (ExpectedImprovement, UpperConfidenceBound)
-        if np_bool:
+        if 'ANP' in model_type:
+            from custom.analytic_anp import (UpperConfidenceBound)
+        elif 'NP' in model_type:
             from custom.analytic_np import (UpperConfidenceBound)
+        elif 'GP' in model_type:
+            from custom.analytic_gp import (ExpectedImprovement, UpperConfidenceBound)
 
         if option == 1:
             # 1. UCF
@@ -51,7 +56,6 @@ class Acquisition(object):
             )
 
     def optimize(self, np=False):
-        print('[INFO] [acquisition] - optimize')
         # for GP
         if np == False:
             from custom.optimize import optimize_acqf
@@ -67,16 +71,12 @@ class Acquisition(object):
         else:
             from custom.optimize import optimize_acqf_NP
             candidate, acq_value = optimize_acqf_NP(self.acq_fcn, 
-                                            bounds=self.bounds, 
-                                            q=self.q, 
-                                            num_restarts=self.num_restarts, 
-                                            raw_samples=self.raw_samples)
-            self.num_restarts += 1
-            self.raw_samples += 1
+                                                    bounds=self.bounds, 
+                                                    q=self.q, 
+                                                    num_restarts=self.num_restarts, 
+                                                    raw_samples=self.raw_samples)
             
-            print(f'[INFO] \033[91m raw samples: {self.raw_samples} \033[0m')
-            print(f'[INFO] \033[91m num_restarts: {self.num_restarts} \033[0m')
-            # print(f'[INFO] \033[92m (incremented) \033[91m raw samples: {self.raw_samples} \033[0m')
+            # print(f'[INFO] \033[91m raw samples: {self.raw_samples}, num_restarts: {self.num_restarts} \033[0m')
         return candidate, acq_value
 
 

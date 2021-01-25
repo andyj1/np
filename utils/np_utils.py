@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import os
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,9 +16,13 @@ def log_likelihood(mu, std, target):
     return norm.log_prob(target).sum(dim=0).mean()
 
 
-def KLD_gaussian(q_target, q_context):
+def kl_div(q_target, q_context):
+    ''' example
+    dist1 = torch.distributions.normal.Normal(loc=a, scale=b)
+    dist2 = torch.distributions.normal.Normal(loc=c, scale=d)
+    ans4 = KLD_gaussian(dist1, dist2)
+    '''
     return kl_divergence(q_target, q_context).mean(dim=0).sum()
-
 
 def random_split_context_target(x, y, n_context):
     ind = np.arange(x.shape[0])
@@ -25,9 +31,25 @@ def random_split_context_target(x, y, n_context):
     y = y.cpu()
     context_x, context_y, target_x, target_y = [x[mask], y[mask], np.delete(x, mask, axis=0), np.delete(y, mask, axis=0)]
     
+    # alternative
+    # context_idx = random.sample(range(train_X.shape[0]), cfg['np']['num_context'])
+    # target_idx = np.delete(range(train_X.shape[0]), context_idx)
+    # x_context, x_target = train_X[context_idx], train_X[target_idx]
+    # y_context, y_target = train_Y[context_idx], train_Y[target_idx]
     return context_x, context_y, target_x, target_y
 
+# reparam trick for tractability in randomness in the input
+def reparametrize(z):
+    mu, logvar = z
+    std = torch.exp(0.5 * logvar)
+    eps = torch.randn_like(std)
+    z_sample = eps.mul(std).add_(mu)
+    z_sample = z_sample.unsqueeze(1).expand(-1, 784, -1)
+    return z_sample
 
+
+
+'''
 def visualize(x, y, x_star, model, epoch, xvar='x', yvar='y', result_path='./'):
     r_z = model.data_to_r(x, y)
     z_mu, z_std = model.r_to_z(r_z)
@@ -52,47 +74,4 @@ def visualize(x, y, x_star, model, epoch, xvar='x', yvar='y', result_path='./'):
     fig.savefig(os.path.join(
         result_path, f'{parttype}_{xvar}_{yvar}_epoch_{str(epoch)}.png'))
     plt.show()
-
-# ===== ANP utils =====
-
-def collate_fn(batch):
-    # Puts each data field into a tensor with outer dimension batch size
-    assert isinstance(batch[0], tuple)
-        
-    max_num_context = 784
-    num_context = np.random.randint(10,784) # extract random number of contexts
-    num_target = np.random.randint(0, max_num_context - num_context)
-    num_total_points = num_context + num_target # this num should be # of target points
-#     num_total_points = max_num_context
-    context_x, context_y, target_x, target_y = list(), list(), list(), list()
-    
-    for d, _ in batch:
-        total_idx = np.random.choice(range(784), num_total_points, replace=False)
-        total_idx = list(map(lambda x: (x//28, x%28), total_idx))
-        c_idx = total_idx[:num_context]
-        c_x, c_y, total_x, total_y = list(), list(), list(), list()
-        for idx in c_idx:
-            c_y.append(d[:, idx[0], idx[1]])
-            c_x.append((idx[0] / 27., idx[1] / 27.))
-        for idx in total_idx:
-            total_y.append(d[:, idx[0], idx[1]])
-            total_x.append((idx[0] / 27., idx[1] / 27.))
-        c_x, c_y, total_x, total_y = list(map(lambda x: torch.FloatTensor(x), (c_x, c_y, total_x, total_y)))
-        context_x.append(c_x)
-        context_y.append(c_y)
-        target_x.append(total_x)
-        target_y.append(total_y)
-        
-        
-    context_x = torch.stack(context_x, dim=0)
-    context_y = torch.stack(context_y, dim=0).unsqueeze(-1)
-    target_x = torch.stack(target_x, dim=0)
-    target_y = torch.stack(target_y, dim=0).unsqueeze(-1)
-    
-    return context_x, context_y, target_x, target_y
-
-
-def kl_div(prior_mu, prior_var, posterior_mu, posterior_var):
-    kl_div = (torch.exp(posterior_var) + (posterior_mu-prior_mu) ** 2) / torch.exp(prior_var) - 1. + (prior_var - posterior_var)
-    kl_div = 0.5 * kl_div.sum()
-    return kl_div
+'''

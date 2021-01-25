@@ -1,274 +1,207 @@
+#!/usr/bin/env python3
 
-import pandas as pd
-import numpy as np
+import sys
+from collections import OrderedDict
+from contextlib import ExitStack
+from typing import Any, List, Optional
+
 import matplotlib.pyplot as plt
-
+import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.nn import functional as F
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-import sys
-
-from utils.np_utils import log_likelihood, KLD_gaussian, random_split_context_target
-
-from collections import OrderedDict
-
-from botorch.posteriors.gpytorch import GPyTorchPosterior
-from typing import Any, Optional, List
-from contextlib import ExitStack
-from gpytorch import settings
-from gpytorch.distributions import MultitaskMultivariateNormal, MultivariateNormal
-from torch.distributions.lowrank_multivariate_normal import LowRankMultivariateNormal
-from gpytorch.lazy import lazify
 from botorch.models.utils import add_output_dim
+from botorch.posteriors.gpytorch import GPyTorchPosterior
+from gpytorch import settings
+from gpytorch.distributions import (MultitaskMultivariateNormal,
+                                    MultivariateNormal)
+# from torch.distributions.lowrank_multivariate_normal import LowRankMultivariateNormal
+from gpytorch.lazy import lazify
+from torch.nn import functional as F
+from utils.np_modules import Encoder, Decoder, Repr2Latent
+import utils.np_utils as np_utils
+from botorch.posteriors.posterior import Posterior
 
-import math
 
-def kullback_leiber_divergence(mu, sigma, nu, tau):
-    """Compute the Kullback-Leibler divergence between two univariate normals
+''' avoids Cholesky decomposition for covariance matrices '''
+# 1. covar_root_decomposition: decomposition using low-rank approx using th eLanczos algorithm
+# 2. log_prob: computed using a modified conjugate gradients algorithm
+# 3. solves: computes positive-definite matrices with preconditioned conjugate gradients
+settings.fast_computations(covar_root_decomposition=True, log_prob=True, solves=True)
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    D(Q || P) where Q ~ N(mu, sigma^2) and P ~ N(nu, tau^2)
-
-    See https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence#Multivariate_normal_distributions
-    """
-    sigma = sigma + 1e-16
-    tau = tau + 1e-16
-
-    return ((sigma**2 + (mu - nu )**2) / tau**2 - 1 + 2 * torch.log(tau / sigma)).sum() / 2
-
-def log_likelihood(mu, sigma, x):
-    """Compute the log-likelihood of n x under m univariate normal distributions
-
-    This omits a constant log(2pi) term.
-
-    Parameters
-    ----------
-    mu : torch.Tensor of shape m
-    sigma : torch.Tensor of shape m
-    x : torch.Tensor of shape n
-
-    Returns
-    -------
-    torch.Tensor of shape [n, m]
-    """
-    # Unsqueeze everything to ensure correct broadcasting
-    x = x.unsqueeze(dim=1)
-    mu = mu.unsqueeze(dim=0)
-    sigma = sigma.unsqueeze(dim=0)
-
-    return -(x - mu )**2 / (2 * sigma**2) - torch.log(sigma) # - np.log(np.sqrt(2 * np.pi))
-
-# class definition
 class NP(nn.Module):
-    def __init__(self, cfg):  # hidden_dim, decoder_dim, z_samples):
+    def __init__(self, cfg):
         super(NP, self).__init__()
-        in_dim = 2
-        self.in_dim = in_dim
-        out_dim = 1
-        self.num_outputs = out_dim
-        self.r_dim = 1
-        self.z_dim = 1
-        self.z_samples = cfg['z_samples']
+        self.x_dim = cfg['np']['input_dim']
+        self.y_dim = cfg['np']['output_dim']
+        self.r_dim = cfg['np']['repr_dim']
+        self.z_dim = cfg['np']['latent_dim'] 
+        self.h_dim = cfg['np']['hidden_dim'] # for encoder and decoder hidden layers
 
-        self.mu_context = torch.Tensor([0.0 for _ in range(self.r_dim)])
-        self.sigma_context = torch.Tensor([0.0 for _ in range(self.r_dim)])
+        self.encoder = Encoder(self.x_dim, self.y_dim, self.h_dim, self.r_dim)
+        self.r_to_z = Repr2Latent(self.r_dim, self.z_dim)
+        self.decoder = Decoder(self.x_dim, self.z_dim, self.h_dim, self.y_dim)
+        
+        self.BCELoss = nn.BCELoss()
+        self.num_outputs = self.y_dim
+        
+        self.r = None
+        self.z = None
 
-        # for data (Xc, Yc) --> representation (r)
-        self.encoder = nn.Sequential(OrderedDict([
-            ('hidden1', nn.Linear(in_dim + out_dim, cfg['hidden_dim'])),
-            ('relu1', nn.ReLU()),
-            ('hidden2', nn.Linear(cfg['hidden_dim'], self.r_dim))
-        ]))
-        # for representation (r) --> latent vector (z)
-        self.r_to_z_mu = nn.Linear(self.r_dim, self.z_dim) # quick fix: in_dim - 1 (need to verify)
-        self.r_to_z_std = nn.Linear(self.r_dim, self.z_dim)
+    def aggregate(self, r_i):
+            """
+            Aggregates representations for every (x_i, y_i) pair into a single
+            representation.
+            Parameters
+            ----------
+            r_i : torch.Tensor
+                Shape (batch_size, num_points, r_dim)
+            """
+            return torch.mean(r_i, dim=1)
+    def xy_to_mu_sigma(self, x, y):
+        """
+        Maps (x, y) pairs into the mu and sigma parameters defining the normal
+        distribution of the latent variables z.
+        Parameters
+        ----------
+        x : torch.Tensor
+            Shape (batch_size, num_points, x_dim)
+        y : torch.Tensor
+            Shape (batch_size, num_points, y_dim)
+        """
+        batch_size, num_points, _ = x.size()
+        # Flatten tensors, as encoder expects one dimensional inputs
+        x_flat = x.view(batch_size * num_points, self.x_dim)
+        y_flat = y.contiguous().view(batch_size * num_points, self.y_dim)
+        # Encode each point into a representation r_i
+        r_i_flat = self.encoder(x_flat, y_flat)
+        # Reshape tensors into batches
+        r_i = r_i_flat.view(batch_size, num_points, self.r_dim)
+        # Aggregate representations r_i into a single representation r
+        r = self.aggregate(r_i)
+        # Return parameters of distribution
+        return self.r_to_z(r)
 
-        # for input(x) & latent vector(z) --> output(y)
-        self.decoder_hidden = nn.Sequential(OrderedDict([
-            ('decoder1', nn.Linear(in_dim + self.z_dim, cfg['decoder_dim'])),
-            ('sigmoid1', nn.Sigmoid()),
-            # ('decoder2', nn.Linear(cfg['decoder_dim'], cfg['decoder_dim']))
-        ]))
-        self.decoder_mu = nn.Linear(cfg['decoder_dim'], out_dim)
-        self.decoder_std = nn.Linear(cfg['decoder_dim'], out_dim)
+    def forward(self, x_context, y_context, x_target, y_target = None):
+        """
+        Given context pairs (x_context, y_context) and target points x_target,
+        returns a distribution over target points y_target.
+        Parameters
+        ----------
+        x_context : torch.Tensor
+            Shape (batch_size, num_context, x_dim). Note that x_context is a
+            subset of x_target.
+        y_context : torch.Tensor
+            Shape (batch_size, num_context, y_dim)
+        x_target : torch.Tensor
+            Shape (batch_size, num_target, x_dim)
+        y_target : torch.Tensor or None
+            Shape (batch_size, num_target, y_dim). Only used during training.
+        Note
+        ----
+        We follow the convention given in "Empirical Evaluation of Neural
+        Process Objectives" where context is a subset of target points. This was
+        shown to work best empirically.
+        """
+        
+        # add batch size dimension at 0
+        x_context = x_context.unsqueeze(0)
+        y_context = y_context.unsqueeze(0)
+        x_target = x_target.unsqueeze(0)
+        target_y = y_target.unsqueeze(0)
+        
+        # Infer quantities from tensor dimensions
+        batch_size, num_context, x_dim = x_context.size()
+        _, num_target, _ = x_target.size()
+        _, _, y_dim = y_context.size()
 
-        self.init_weights()
-
-    def init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.normal_(m.weight)
-
-    # data to representations, aggregated
-    def data_to_r(self, x, y):
-        x_y = torch.cat([x, y], dim=1)
-        r_i = self.encoder(x_y)
-
-        # mean aggregate
-        r = r_i.mean(dim=0)
-        return r
-
-    # representation to latent vector
-    def r_to_z(self, r):
-        mean = self.r_to_z_mu(r)
-        log_var = self.r_to_z_std(r)
-        return mean, F.softplus(log_var)
-
-    # reparam trick for tractability in randomness in the input
-    def reparametrize(self, mu, std, n):
-        eps = torch.autograd.Variable(std.data.new(n, self.z_dim).normal_())
-        z = eps.mul(std).add_(mu)
-        return z
-
-    # decoder
-    def decoder(self, x, z):
-        # z = z.unsqueeze(-1).expand(z.size(0), z.size(1), x_pred.size(0)).transpose(1, 2)
-        # x_pred = x_pred.unsqueeze(0).expand(z.size(0), x_pred.size(0), x_pred.size(1))
-
-        # Concatenate to a tensor of shape [len(z), len(x), x_dim + z_dim]
-        x = x.reshape((-1, self.in_dim))
-        z = z.reshape((-1, self.z_dim))
-        x = x.unsqueeze(0).expand(z.shape[0], -1, -1)
-        z = z.unsqueeze(0).expand(x.shape[1], -1, -1).transpose(0, 1)
-
-        x_z = torch.cat([x, z], dim=-1)
-
-        decoded = self.decoder_hidden(x_z)
-        mu = self.decoder_mu(decoded)
-        std = self.decoder_std(decoded)
-
-        mu = mu.squeeze(-1)
-        std = std.squeeze(-1)
-        std = F.softplus(std)
-        return mu, std
-
-    # def forward(self, x_context, y_context, x_target, y_target = None):
-    def forward(self, X, y_target = None):
-        # x_context, y_context, x_target = torch.split(X, 3, dim = -1)
-        # x_context, y_context, x_target = X
-        # in_dim = x_target.shape[-1]
-        if self.training :
-            x_context, y_context, x_target = X
-            in_dim = x_target.shape[-1]
-
+        
+        # training mode
+        if y_target is not None: 
             # Encode target and context (context needs to be encoded to
             # calculate kl term)
-            mu_target, sigma_target = self.r_to_z(self.data_to_r(x_target, y_target))
-            mu_context, sigma_context = self.r_to_z(self.data_to_r(x_context, y_context))
+            mu_target, sigma_target = self.xy_to_mu_sigma(x_target, y_target)
+            mu_context, sigma_context = self.xy_to_mu_sigma(x_context, y_context)
             # Sample from encoded distribution using reparameterization trick
-            q_target = torch.distributions.Normal(mu_target, sigma_target)
-            q_context = torch.distributions.Normal(mu_context, sigma_context)
-
-            z_sample = q_target.rsample([self.z_samples, self.z_dim])
+            posterior = torch.distributions.Normal(mu_target, sigma_target)
+            prior = torch.distributions.Normal(mu_context, sigma_context)
+            
+            # find z
+            # TODO: need to reparameterize and make this samples
+            z = posterior.unsqueeze(1).repeat(1, num_target, 1)
+            
+            # find r
+            batch_size, num_target, _ = x_target.size()
+            # Flatten tensors, as encoder expects one dimensional inputs
+            x_flat = x_context.view(batch_size * num_target, self.x_dim)
+            y_flat = y_context.contiguous().view(batch_size * num_target, self.y_dim)
+            # Encode each point into a representation r_i
+            r_i_flat = self.encoder(x_flat, y_flat)
+            # Reshape tensors into batches
+            r_i = r_i_flat.view(batch_size, num_target, self.r_dim)
+            # Aggregate representations r_i into a single representation r
+            r = self.aggregate(r_i)
+            
+            
+            kl = np_utils.kl_div(prior, posterior)
+            
+            z_sample = posterior.rsample()
             # Get parameters of output distribution
-            y_pred_mu, y_pred_sigma = self.decoder(x_target, z_sample)
-            # p_y_pred = torch.distributions.Normal(y_pred_mu, y_pred_sigma)
+            y_pred_dist, y_pred_mu, y_pred_sigma = self.decoder(x_target, z_sample)
+            p_y_pred = torch.distributions.Normal(y_pred_mu, y_pred_sigma)
+            log_p = p_y_pred.log_prob(y_target)
 
-            self.mu_context = mu_context
-            self.sigma_context = sigma_context
-
-            return y_pred_mu, y_pred_sigma, q_target, q_context
+            loss = self.BCELoss(torch.sigmoid(y_pred_mu), target_y)
+    
+        # testing mode
         else:
             # At testing time, encode only context
-            in_dim = X.shape[-1]
-            # FIXME
-            # mu_context, sigma_context = self.data_to_r(x_context, y_context)
+            mu_context, sigma_context = self.xy_to_mu_sigma(x_context, y_context)
             # Sample from distribution based on context
-            q_context = torch.distributions.Normal(self.mu_context, self.sigma_context)
-            z_sample = q_context.rsample([self.z_samples, in_dim])
+            prior = torch.distributions.Normal(mu_context, sigma_context)
+            z_sample = prior.rsample()
+            
+            # find z
+            z = prior.unsqueeze(1).repeat(1, num_target, 1)
+            
+            
+            # find r
+            batch_size, num_target, _ = x_target.size()
+            # Flatten tensors, as encoder expects one dimensional inputs
+            x_flat = x_context.view(batch_size * num_target, self.x_dim)
+            y_flat = y_context.contiguous().view(batch_size * num_target, self.y_dim)
+            # Encode each point into a representation r_i
+            r_i_flat = self.encoder(x_flat, y_flat)
+            # Reshape tensors into batches
+            r_i = r_i_flat.view(batch_size, num_target, self.r_dim)
+            # Aggregate representations r_i into a single representation r
+            r = self.aggregate(r_i)
+            
             # Predict target points based on context
-            # y_pred_mu, y_pred_sigma = self.decoder(x_target, z_sample)
-            y_pred_mu, y_pred_sigma = self.decoder(X, z_sample)
-            # p_y_pred = torch.distributions.Normal(y_pred_mu, y_pred_sigma)
-            # return y_pred_mu, y_pred_sigma
-            return MultivariateNormal(y_pred_mu, y_pred_sigma**2)
+            y_pred_dist, y_pred_mu, y_pred_sigma = self.decoder(x_target, z_sample)
+            p_y_pred = torch.distributions.Normal(y_pred_mu, y_pred_sigma)
+            
+            log_p = None
+            kl = None
+            loss = None
+           
+        # update r and z for the model
+        self.r = r
+        self.z = z
+         
+        return y_pred_mu, y_pred_sigma, log_p, kl, loss
 
-    '''
-    def forward(self, x_context, y_context, x_target, y_target):
-        # make x, y stack
-        x_all = torch.cat([x_context, x_target], dim = 0)
-        y_all = torch.cat([y_context, y_target], dim = 0)
-
-        # all data -> global repr
-        r_all = self.data_to_r(x_all, y_all)
-        z_all_mu, z_all_std = self.r_to_z(r_all)
-
-        # context data -> context repr
-        r = self.data_to_r(x_context, y_context)    # data -> repr
-        # print('after data_to_r, r shape:',r.shape)
-
-        z_mean, z_std = self.r_to_z(r)   # repr -> latent z
-
-        # reparameterize
-        # Estimate the log-likelihood part of the ELBO by sampling z from q(z | x, y)
-        zs = self.reparametrize(z_all_mu, z_all_std, self.z_samples)
-
-        # decoder
-        mu, std = self.decoder(x_target, zs)
-        # mu, std = self.decoder(x_context, zs)
-        return mu, std, z_all_mu, z_all_std, z_mean, z_std
-
-    def elbo(self, x_context, y_context, x_target, y_target):
-        mu, std, z_mu_all, z_std_all, z_mean, z_std = self.forward(x_context, y_context, x_target, y_target)
-
-        # Compute the Kullback-Leibler divergence part
-        kld = kullback_leiber_divergence(z_mu_all, z_std_all, z_mean, z_std)
-        log_llh = log_likelihood(mu, std, y_target).sum(dim=0).mean()
-        return log_llh - kld
-    '''
-
-    def posterior(
-            self,
-            X: torch.Tensor,
-            output_indices: Optional[List[int]] = None,
-            observation_noise: bool = False,
-            **kwargs: Any,
-    ) -> GPyTorchPosterior:
-        r"""Computes the posterior over model outputs at the provided points.
-
-        Args:
-            X: A `(batch_shape) x q x d`-dim Tensor, where `d` is the dimension of the
-                feature space and `q` is the number of points considered jointly.
-            output_indices: A list of indices, corresponding to the outputs over
-                which to compute the posterior (if the model is multi-output).
-                Can be used to speed up computation if only a subset of the
-                model's outputs are required for optimization. If omitted,
-                computes the posterior over all model outputs.
-            observation_noise: If True, add observation noise to the posterior.
-            detach_test_caches: If True, detach GPyTorch test caches during
-                computation of the posterior. Required for being able to compute
-                derivatives with respect to training inputs at test time (used
-                e.g. by qNoisyExpectedImprovement). Defaults to `True`.
-
-        Returns:
-            A `GPyTorchPosterior` object, representing `batch_shape` joint
-            distributions over `q` points and the outputs selected by
-            `output_indices` each. Includes observation noise if
-            `observation_noise=True`.
-        """
-        self.eval()  # make sure model is in eval mode
-        detach_test_caches = kwargs.get("detach_test_caches", True)
-        with ExitStack() as es:
-            es.enter_context(settings.debug(False))
-            es.enter_context(settings.fast_pred_var())
-            es.enter_context(settings.detach_test_caches(detach_test_caches))
-            # insert a dimension for the output dimension
-            if self.num_outputs > 1:
-                X, output_dim_idx = add_output_dim(
-                    X=X, original_batch_shape=self._input_batch_shape
-                )
-            mvn = self(X)
-            mean_x = mvn.mean
-            covar_x = mvn.covariance_matrix
-            if self.num_outputs > 1:
-                output_indices = output_indices or range(self.num_outputs)
-                mvns = [
-                    MultivariateNormal(
-                        mean_x.select(dim=output_dim_idx, index=t),
-                        lazify(covar_x.select(dim=output_dim_idx, index=t)),
-                    )
-                    for t in output_indices
-                ]
-                mvn = MultitaskMultivariateNormal.from_independent_mvns(mvns=mvns)
-        return GPyTorchPosterior(mvn=mvn)
+    # posterior generation assuming context x and y already formed r and z
+    # returns single-output mvn Posterior class
+    # this is called in analytic_np - base class for the acquisition functions
+    def make_np_posterior(self, target_x) -> Posterior:
+        target_x = target_x.permute(1,0,2)
+        assert self.r.shape[1] == self.z.shape[1] == target_x.shape[1], \
+            f'r:{self.r.shape}, z:{self.z.shape}, target_x:{target_x.shape}'
+            
+        # print(f'[INFO] decoder forwarding... r:{self.r.shape},z:{self.z.shape},target_x:{target_x.shape}')
+        dist, _, _ =  self.decoder(self.r, self.z, target_x)
+        return dist
+        

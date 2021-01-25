@@ -109,7 +109,7 @@ def fit_gpytorch_torch(
     optim_options = {"maxiter": 100, "disp": True, "lr": 0.05}
     optim_options.update(options or {})
     exclude = optim_options.pop("exclude", None)
-    DISPLAY_FOR_EVERY = optim_options["maxiter"] // 5
+    DISPLAY_FOR_EVERY = optim_options["maxiter"] // 5 if optim_options["maxiter"]>5 else 1
     if exclude is not None:
         mll_params = [
             t for p_name, t in mll.named_parameters() if p_name not in exclude

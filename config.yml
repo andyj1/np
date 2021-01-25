@@ -3,8 +3,8 @@ toy:
   sigma: 120
 
 acquisition:        # by default, it uses multi-start optimization
-  option: 1         # acquisition function type 
-  q: 1              # smallest number of candidates to be considered jointly
+  option: 1         # acquisition function type: [1: UCB, 2: EI, 3: qEI, ...]
+  q: 1              # smallest number of candidates to be considered jointly; q=1 for single-outcome
   num_restarts: 10  # number of starting points for multi-start acquisition function
   raw_samples: 10   # number of samples for initialization
   bounds: 120       # 2xd tensor of lower and upper bounds for each column of X
@@ -12,19 +12,30 @@ acquisition:        # by default, it uses multi-start optimization
   best_f: 0.1
 
 train:
-  num_iter: 20
+  num_iter: 10
   num_epoch: 10
-  num_samples: 50
+  num_samples: 100
+
+anp:
+  input_dim: 3
+  output_dim: 1
+  hidden_dim: 32
+  num_context: 90 # must be num_samples - num_restarts (or raw_samples)
 
 np:
-  input_dim: 3
-  num_context: 40
+  input_dim: 2
+  output_dim: 1
+  repr_dim: 32
+  latent_dim: 32
   hidden_dim: 32
-  decoder_dim: 15
-  z_samples: 20
+  
+  num_context: 90
+  
+
 
 MOM4:
-  parttype: R1005 # [R0402, R0603, R1005, all]
+  # [R0402, R0603, R1005, all]
+  parttype: R1005
   input_var:
     - PRE_L
     - PRE_W

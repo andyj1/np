@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import math
 
 import torch
@@ -129,10 +131,8 @@ class Decoder(nn.Module):
             hidden = torch.relu(linear(hidden))
             
         # get mu and sigma
-        # TODO
         hidden = self.final_projection(hidden)
         mu, log_sigma = torch.split(hidden, 1, dim=-1)
-        # print(f'mu shape: {mu.shape}, sigma shape:{log_sigma.shape}')
         sigma = 0.1 + 0.9 * nn.Softplus()(log_sigma)
         
         # reshape for MultivariateNormal distribution

@@ -333,11 +333,6 @@ def optimize_acqf_NP(
             raw_samples=raw_samples,
             options=options,
         )
-    
-    print('raw_samples',raw_samples)
-    print('batch_initial_conditions:',batch_initial_conditions.shape)
-    # import sys
-    # sys.exit(0)
 
     batch_limit: int = options.get("batch_limit", num_restarts)
     batch_candidates_list: List[Tensor] = []
@@ -346,7 +341,6 @@ def optimize_acqf_NP(
     
     for start_idx in start_idcs:
         end_idx = min(start_idx + batch_limit, num_restarts)
-        print('end_idx:',end_idx)
         # optimize using random restart optimization
         
         batch_candidates_curr, batch_acq_values_curr = gen_candidates_scipy(

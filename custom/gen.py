@@ -117,8 +117,6 @@ def gen_candidates_scipy(
         fval = loss.item()
         return fval, gradf
     
-    print('[gen - get_candidates_scipy] minimizing...')
-
     res = minimize(
         f,
         x0,

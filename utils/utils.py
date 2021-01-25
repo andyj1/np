@@ -5,8 +5,10 @@ import joblib
 import numpy as np
 
 def checkParamIsSentToCuda(args):
+    status = []
     for i, arg in enumerate(args):
-        print(f'{i}: Cuda: {arg.is_cuda}')
+        status.append(arg.is_cuda)
+    return status
 
 def loadReflowOven(args, chip='R1005', inputtype=0):
     # load RF regressor 
@@ -43,11 +45,9 @@ def loadReflowOven(args, chip='R1005', inputtype=0):
     # model_paths = ['model1', ... ]
     '''
 
-    # reflow oven maps in 2 different ways: (1) PRE-SPI -> POST, or (2) PRE -> POST 
-    model_path = args.load
-    if model_path is None:
-        model_path = 'reflow_oven/models/regr_multirf_pre_all.pkl'
-    regr_multirf = joblib.load(model_path)
+    # reflow oven maps [PRE] to POST 
+    reflow_oven_model_path = args.load_rf
+    regr_multirf = joblib.load(reflow_oven_model_path)
 
     loadRFRegressor_end = time.time()
     print(': took: %.3f seconds' % (loadRFRegressor_end - loadRFRegressor_start))
