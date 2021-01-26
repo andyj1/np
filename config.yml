@@ -12,8 +12,8 @@ acquisition:        # by default, it uses multi-start optimization
   best_f: 0.1
 
 train:
-  num_iter: 10
-  num_epoch: 10
+  num_iter: 5
+  num_epoch: 200
   num_samples: 100
 
 anp:

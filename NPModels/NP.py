@@ -130,11 +130,13 @@ class NP(nn.Module):
             
             # find z
             # TODO: need to reparameterize and make this samples
-            z = posterior.unsqueeze(1).repeat(1, num_target, 1)
+            # z = posterior.unsqueeze(1).repeat(1, num_target, 1)
             
             # find r
             batch_size, num_target, _ = x_target.size()
             # Flatten tensors, as encoder expects one dimensional inputs
+            # TODO
+            
             x_flat = x_context.view(batch_size * num_target, self.x_dim)
             y_flat = y_context.contiguous().view(batch_size * num_target, self.y_dim)
             # Encode each point into a representation r_i
@@ -148,6 +150,8 @@ class NP(nn.Module):
             kl = np_utils.kl_div(prior, posterior)
             
             z_sample = posterior.rsample()
+            
+            z = z_sample.unsqueeze(1).repeat(1, num_target, 1)
             # Get parameters of output distribution
             y_pred_dist, y_pred_mu, y_pred_sigma = self.decoder(x_target, z_sample)
             p_y_pred = torch.distributions.Normal(y_pred_mu, y_pred_sigma)
@@ -164,7 +168,7 @@ class NP(nn.Module):
             z_sample = prior.rsample()
             
             # find z
-            z = prior.unsqueeze(1).repeat(1, num_target, 1)
+            z = z_sample.unsqueeze(1).repeat(1, num_target, 1)
             
             
             # find r

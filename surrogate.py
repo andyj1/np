@@ -134,7 +134,7 @@ class SurrogateModel(object):
             # split into context and target
             x_context, y_context, x_target, y_target = random_split_context_target(train_X, train_Y, cfg['np']['num_context'])
 
-            print(f'[INFO] x_context: {x_context.shape}, y_context:{y_context.shape}, x_target:{x_target.shape}, y_target:{y_target.shape}')
+            # print(f'[INFO] x_context: {x_context.shape}, y_context:{y_context.shape}, x_target:{x_target.shape}, y_target:{y_target.shape}')
             
             # send to gpu
             x_context = x_context.to(self.device)
