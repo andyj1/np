@@ -28,10 +28,10 @@
 5. */ckpts* contains checkpoints for training SingleTaskGP model
 
 > ```python
-> python main.py # run with MOM4 data
-> python main.py --toy # run with toy data
-> python main.py --toy --load PATH # load model and optimizer from checkpoints
+> python main.py        # run with MOM4 data
+> python main.py --toy  # run GP model with toy data
+> python main.py --toy --model [anp|np] --load PATH/TO/CKPT_PT
 > ```
 
-## Contribution
-## License
+<!-- ## Contribution
+## License -->

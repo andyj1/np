@@ -136,7 +136,7 @@ class NP(nn.Module):
             batch_size, num_target, _ = x_target.size()
             # Flatten tensors, as encoder expects one dimensional inputs
             # TODO
-            
+            print('context x size:',x_context.shape,'target_x size:', num_target, 'in_dim:',self.x_dim)
             x_flat = x_context.view(batch_size * num_target, self.x_dim)
             y_flat = y_context.contiguous().view(batch_size * num_target, self.y_dim)
             # Encode each point into a representation r_i

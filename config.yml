@@ -8,7 +8,7 @@ acquisition:        # by default, it uses multi-start optimization
   num_restarts: 10  # number of starting points for multi-start acquisition function
   raw_samples: 10   # number of samples for initialization
   bounds: 120       # 2xd tensor of lower and upper bounds for each column of X
-  beta: 0.2
+  beta: 0.2         # the smaller value, the more exploitative acquisition function becomes (UCB)
   best_f: 0.1
 
 train:
@@ -20,7 +20,7 @@ anp:
   input_dim: 3
   output_dim: 1
   hidden_dim: 32
-  num_context: 90 # must be num_samples - num_restarts (or raw_samples)
+  num_context: 90 # must be ${train.num_samples} - ${acquisition.num_restarts or raw_samples}
 
 np:
   input_dim: 2
