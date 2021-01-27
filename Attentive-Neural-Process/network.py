@@ -52,6 +52,7 @@ class LatentModel(nn.Module):
             kl = kl_div(prior_mu, prior_var, posterior_mu, posterior_var)
             
             # maximize prob and minimize KL divergence
+            
             loss = bce_loss + kl
         
         # For Generation

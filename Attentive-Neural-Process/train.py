@@ -29,6 +29,7 @@ def main():
     
     if not os.path.isdir('./checkpoint'):
         os.makedirs('./checkpoint')
+    training_loss = 0
     for epoch in range(epochs):
         dloader = DataLoader(train_dataset, batch_size=16, collate_fn=collate_fn, shuffle=True, num_workers=16)
         pbar = tqdm(dloader)
@@ -43,6 +44,7 @@ def main():
             
             # pass through the latent model
             y_pred, kl, loss = model(context_x, context_y, target_x, target_y)
+            training_loss = loss.item()
             
             # Training step
             optim.zero_grad()
@@ -55,7 +57,8 @@ def main():
                     'kl':kl.mean(),
 
                 }, global_step)
-            
+        
+        print(f'epoch: {epoch}, loss: {training_loss}')
         # save model by each epoch    
         torch.save({'model':model.state_dict(),
                     'optimizer':optim.state_dict()},
