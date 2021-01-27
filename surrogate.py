@@ -20,13 +20,12 @@ from NPModels.NP import NP as NeuralProcesses
 from NPModels.ANP import ANP as AttentiveNeuralProcesses
 from utils.np_utils import random_split_context_target
 
-
 def save_ckpt(model, optimizer, toy_bool, np_bool, chip, iter):
     checkpoint = {'state_dict': model.state_dict(),
                     'optimizer' : optimizer.state_dict()}
-    base_path = f'ckpts/checkpoint_iter_{iter}'
-    data_type = f"toy" if toy_bool else f"{chip}"
-    model_type = '_NP' if np_bool else '_GP'
+    base_path = f'ckpts/checkpoint_iter_{iter}_'
+    data_type = f"toy_" if toy_bool else f"{chip}_"
+    model_type = 'NP' if np_bool else 'GP'
     extension = '.pt'
     
     save_path = base_path + data_type + model_type + extension
@@ -38,16 +37,19 @@ class SurrogateModel(object):
         super(SurrogateModel, self).__init__()
         
         self.epochs = epochs
-        if model_type == 'NP':
+        self.model_type = model_type
+        if self.model_type == 'NP':
             self.model = NeuralProcesses(cfg).to(device)
-        elif model_type == 'ANP':
+        elif self.model_type == 'ANP':
             self.model = AttentiveNeuralProcesses(cfg).to(device)
-        elif model_type == 'GP':
+        elif self.model_type == 'GP':
             self.model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
             self.model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
             mll = ExactMarginalLogLikelihood(likelihood=self.model.likelihood, model=self.model)
             mll.to(train_X)
-            
+        
+        global DISPLAY_FOR_EVERY
+        DISPLAY_FOR_EVERY = cfg['train']['display_for_every']
         # optimizer_cls = optim.AdamW
         # optimizer_cls = optim.SparseAdam # doesn't support dense gradients
         # self.optimizer_cls = optim.Adamax
@@ -88,7 +90,8 @@ class SurrogateModel(object):
                                             options=optimizer_options, \
                                             approx_mll=True, \
                                             custom_optimizer=self.optimizer, \
-                                            device=self.device)
+                                            device=self.device,
+                                            display_for_every=DISPLAY_FOR_EVERY)
         loss = info_dict['fopt']
         self.model = mll.model
         
@@ -117,7 +120,7 @@ class SurrogateModel(object):
             # print(f"lengthscale: {model.covar_module.base_kernel.lengthscale:>4.3f}")
             self.optimizer.step()
         '''
-        
+        # syntax: save_ckpt(model, optimizer, toy_bool, np_bool, chip, iter)
         save_ckpt(self.model, self.optimizer, toy_bool, False, chip, iter)
         return info_dict
     
@@ -129,10 +132,11 @@ class SurrogateModel(object):
         optimizer = optim.Adam(self.model.parameters(), lr=0.01)
 
         training_loss = 0
+        num_context = cfg[self.model_type.lower()]['num_context']
         for train_epoch in range(self.epochs):
             optimizer.zero_grad()
             # split into context and target
-            x_context, y_context, x_target, y_target = random_split_context_target(train_X, train_Y, cfg['np']['num_context'])
+            x_context, y_context, x_target, y_target = random_split_context_target(train_X, train_Y, num_context)
 
             # print(f'[INFO] x_context: {x_context.shape}, y_context:{y_context.shape}, x_target:{x_target.shape}, y_target:{y_target.shape}')
             
@@ -144,14 +148,13 @@ class SurrogateModel(object):
 
             # forward pass
             mu, sigma, log_p, kl, loss = self.model(x_context, y_context, x_target, y_target)
-
             self.writer.add_scalar(f"Loss/train_NP_{cfg['train']['num_samples']}_samples_fitNP", loss.item(), train_epoch)
 
             # backprop
             training_loss = loss.item()
             loss.backward()
             optimizer.step()
-            if train_epoch % (self.epochs//3) == 0:
+            if (train_epoch+1) % (self.epochs//DISPLAY_FOR_EVERY) == 0:
                 print('[INFO] train_epoch: {}/{}, loss: {}'.format(train_epoch+1, self.epochs, training_loss))
         
         

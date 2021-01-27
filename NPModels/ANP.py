@@ -73,7 +73,7 @@ class ANP(nn.Module):
         else:
             z = prior
 
-        z = z.unsqueeze(1).repeat(1,num_targets,1) # [B, T_target, H]
+        z = z.unsqueeze(1).repeat(1, num_targets, 1) # [B, T_target, H]
         
         # returns attention query for the encoder input after cross-attention
         r = self.deterministic_encoder(context_x, context_y, target_x) # [B, T_target, H]
@@ -90,19 +90,25 @@ class ANP(nn.Module):
             bce_loss = self.BCELoss(torch.sigmoid(mu), target_y)
             
             # get KL divergence between prior and posterior
-            q = torch.distributions.normal.Normal(loc=prior_mu, scale=prior_var)
-            p = torch.distributions.normal.Normal(loc=posterior_mu, scale=posterior_var)
-            kl = np_utils.kl_div(q, p)
+            kl_div = (torch.exp(posterior_var) + (posterior_mu - prior_mu) ** 2) / torch.exp(prior_var) - 1. + (prior_var - posterior_var)
+            kl = 0.5 * kl_div.sum()
             
+            # the following gives runtime error
+            # p_context = torch.distributions.normal.Normal(loc=prior_mu, scale=prior_var)
+            # q_target = torch.distributions.normal.Normal(loc=posterior_mu, scale=posterior_var)            
+            # from utils.utils import KLD_gaussian
+            # kl = KLD_gaussian(q_target, p_context).mean(dim=0).sum()
+
             # maximize prob and minimize KL divergence
+            # print('BCE:',bce_loss.item())
+            # print('KLD:',kl.item())
             loss = bce_loss + kl
-            
-        # For Generation (testing)
+        
+        # For Generation
         else:
             log_p = None
             kl = None
             loss = None
-            # print('[ANP] Test mode:', end='')
         
         # update r and z for the model
         self.r = r

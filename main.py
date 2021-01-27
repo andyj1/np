@@ -23,7 +23,6 @@ from utils.utils import (checkParamIsSentToCuda, loadReflowOven, objective,
 
 # use GPU if available
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'); print('Running on:',str(device).upper())
-dtype = torch.float
 
 warnings.filterwarnings('ignore', category=BadInitialCandidatesWarning)
 warnings.filterwarnings('ignore', category=RuntimeWarning)
@@ -41,7 +40,6 @@ CGREEN  = '\033[92m'
 CCYAN   = '\033[93m'
 CBLUE   = '\033[94m'
 CEND    = '\033[0m'
-INCREMENT_CONTEXT = False
 
 def parse():
     parse_start = time.time()
@@ -51,14 +49,20 @@ def parse():
     parser.add_argument('--load_rf', default='reflow_oven/models/regr_multirf_pre_all.pkl', type=str, help='path to reflow oven model')
     parser.add_argument('--model', default='GP', type=str, help='surrogate model type')
     parser.add_argument('--load', default=None, type=str, help='path to checkpoint [pt] file')
+    parser.add_argument('--context', action='store_true', help='flag to increment context size over iterations, instead of target size')
+    parser.add_argument('--chip', default='None', type=str, help='chip part type')
     args = parser.parse_args()
     
     parse_end = time.time(); print(': took: %.3f seconds' % (parse_end - parse_start))
     return args
 
 def main():
-    print('='*5,'parsing',end='')
+    print('parsing',end='')
     args = parse()
+    
+    INCREMENT_CONTEXT = False
+    if args.context:
+        INCREMENT_CONTEXT = True
     
     # load config
     cfg = yaml.load(open('config.yml', 'r'), yaml.FullLoader)
@@ -66,19 +70,26 @@ def main():
     NUM_TRAIN_EPOCH = cfg['train']['num_epoch']
     NUM_SAMPLES = cfg['train']['num_samples']
     CHIP = cfg['MOM4']['parttype']
+    if args.chip is not 'None':
+        cfg['MOM4']['parttype'] = args.chip
+        CHIP = args.chip
+    
+    cfg['acquisition']['num_restarts'] = cfg['acquisition']['raw_samples']
+    cfg[args.model.lower()]['num_context'] = cfg['train']['num_samples'] - cfg['acquisition']['num_restarts'] # set num_context
     
     MODEL = args.model.upper() # either ['GP','NP','ANP']
     writer = SummaryWriter(f'runs/{CHIP}_{MODEL}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples')
     
     # load reflow oven regressor
+    print('loading regressor model:', end='')
     regr_multirf = loadReflowOven(args)
     input_types = {0: 'PRE -> POST', 1: 'PRE-SPI -> POST'}
     INPUT_TYPE = 0
-    print('='*10, 'selecting CHIP:', CHIP)
-    print('='*10, 'input type:', input_types[INPUT_TYPE])
+    print('sampling initial data from:', CHIP, '(MOM4)')
+    print('input type:', input_types[INPUT_TYPE])
     
     # load data
-    print('='*5, 'loading data from: ', end='')
+    print('loading data from: ', end='')
     if args.toy:
         print('TOY')
         inputs, outputs = getTOYdata(cfg, model=regr_multirf)
@@ -89,7 +100,7 @@ def main():
     
     # objective function: to minimize the distance from POST to origin toward zero
     targets = torch.FloatTensor([objective(x1, x2) for x1, x2 in zip(outputs[:,0], outputs[:,1])]).unsqueeze(1)
-    print('='*10, 'data sizes:', inputs.shape, targets.shape)
+    print('data sizes:', inputs.shape, targets.shape)
 
     post_mean_list = []
     post_var_list = []
@@ -104,7 +115,7 @@ def main():
     pre_var_list.append(np.var(train_pre_dist))
 
     # initialize model and likelihood
-    print('='*5, 'initializaing surrogate model')
+    print('initializing surrogate model')
     ITER_FROM = 0
     surrogate = SurrogateModel(inputs, targets, args, cfg,
                                writer = writer, device = device, epochs=NUM_TRAIN_EPOCH, model_type=MODEL)
@@ -134,14 +145,14 @@ def main():
 
     # initial training before the acquisition loop
     initial_train_start = time.time()
-    print('='*5, 'training (iteration: %s)' % ITER_FROM)
+    print('training (iteration: %s)' % ITER_FROM)
     optimize_np_bool = False
     if 'NP' in MODEL:
-        print('='*5, '[INFO] initializing Neural Process:', MODEL)
+        print('[INFO] initializing Neural Process:', MODEL)
         optimize_np_bool = True
         info_dict = surrogate.fitNP(inputs, targets, cfg, toy_bool=args.toy)
     else:
-        print('='*5, '[INFO] initializing Gaussian Process:', MODEL)
+        print('[INFO] initializing Gaussian Process:', MODEL)
         info_dict = surrogate.fitGP(inputs, targets, cfg, toy_bool=args.toy, iter=ITER_FROM)
     initial_train_end = time.time()
     print(f'[INFO] initial train time: {initial_train_end-initial_train_start:.3f} sec')
@@ -172,7 +183,7 @@ def main():
         candidate_outputs = reflow_oven(candidate_inputs[0][0:2].unsqueeze(0), regr_multirf)
         reflowoven_end = time.time()
         
-        print(f'\n\n[INFO] iter: {iter}, drawn candidate input: {candidate_inputs} ({candidate_inputs.shape}), candidate output: {candidate_outputs} ({candidate_outputs.shape}')
+        print(f'\n\n[INFO] candidate #{iter}, PRE: {candidate_inputs}, POST: {candidate_outputs}')
 
         # append distance measures
         pre_dist = objective(candidate_inputs[0][0].cpu(), candidate_inputs[0][1].cpu())
@@ -189,12 +200,12 @@ def main():
         ''' do either of the following '''
         if INCREMENT_CONTEXT == True:
             # increment context size
-            cfg['np']['num_context'] += 1 # prior
+            cfg[args.model.lower()]['num_context'] += 1 # prior
         else:
             # increment target size
             acq_fcn.num_restarts += 1
             acq_fcn.raw_samples += 1
-        print(f"[INFO] Context size: {cfg['np']['num_context']}, Target size: {acq_fcn.num_restarts}")
+        print(f"[INFO] context size: {cfg[args.model.lower()]['num_context']}, Target size: {acq_fcn.num_restarts}")
         
         # re-initialize the models so they are ready for fitting on next iteration and re-train
         retrain_start = time.time()
@@ -207,8 +218,8 @@ def main():
         # update progress bar
         t.set_description(
             desc=f"iteration {iter:>3}/{NUM_ITER-ITER_FROM} / loss: {info_dict['fopt']:.3f}," +
-                    f'drawn candidate input: {candidate_inputs} ({candidate_inputs.shape}),' +
-                    f'candidate output: {candidate_outputs} ({candidate_outputs.shape},' +
+                    # f'drawn candidate input: {candidate_inputs} ({candidate_inputs.shape}),' +
+                    # f'candidate output: {candidate_outputs} ({candidate_outputs.shape},' +
                     f'\nprocessing time:' +
                     f'{CRED} (total): {retrain_end-acq_start:.5f} sec, {CEND}' +
                     # f'(acq): {acq_end-acq_start:.5f} sec,' +
@@ -216,16 +227,16 @@ def main():
                     # f'(retrain): {retrain_end-retrain_start:.5f} sec,' +
                     f'{CBLUE} dist: {pre_dist:.3f} -> {post_dist:.3f} {CEND}', 
             refresh=False)
-
+        alpha = (iter)*1/(NUM_ITER-ITER_FROM) if iter > 1 else 1
         ax.scatter(candidate_inputs[0][0].cpu(), candidate_inputs[0][1].cpu(), \
-                    s=10, alpha=(iter)*1/(NUM_ITER-ITER_FROM), color='r', label='_nolegend_')
+                    s=10, alpha=alpha, color='r', label='_nolegend_')
         ax.scatter(candidate_outputs[0][0], candidate_outputs[0][1], \
-                    s=10,alpha=(iter)*1/(NUM_ITER-ITER_FROM), color='g', label='_nolegend_')
+                    s=10,alpha=alpha, color='g', label='_nolegend_')
 
     
     ''' plot inputs and outputs '''
-    ax.scatter(candidate_inputs[0][0].cpu(), candidate_inputs[0][1].cpu(), s=10, alpha=(iter)*1/(NUM_ITER-ITER_FROM), color='r', label='PRE')
-    ax.scatter(candidate_outputs[0][0], candidate_outputs[0][1], s=10,alpha=(iter)*1/(NUM_ITER-ITER_FROM), color='g', label='POST')
+    ax.scatter(candidate_inputs[0][0].cpu(),    candidate_inputs[0][1].cpu(),   s=10, color='r', label='candidate PRE')
+    ax.scatter(candidate_outputs[0][0],         candidate_outputs[0][1],        s=10, color='g', label='candidate POST')
     
     ''' for result summary '''
     candidates_pre_dist = np.asarray(candidates_pre_dist)
@@ -248,9 +259,11 @@ def main():
     # pre_var_list.append(np.var(random_inputs_pre_dist))
     
     ''' compare with randomly sampled data as pre inputs '''
-    # random_samples, _ = getMOM4data(cfg)
-    # random_samples_outputs = reflow_oven(random_samples[:,0:2], regr_multirf)
-    # ax.scatter(random_samples_outputs[:,0], random_samples_outputs[:,1], s=10, alpha=0.3, color='magenta', label='Randomly sampled')
+    cfg['train']['num_samples'] = len(candidates_pre_dist)
+    random_samples, _ = getMOM4data(cfg)
+    random_samples_outputs = reflow_oven(random_samples[:,0:2], regr_multirf)
+    ax.scatter(random_samples[:,0], random_samples[:,1], s=10, alpha=1, color='blue', label='Random PRE')
+    ax.scatter(random_samples_outputs[:,0], random_samples_outputs[:,1], s=10, alpha=1, color='magenta', label='Random POST')
     # random_samples_post_dist = np.linalg.norm(random_samples_outputs, axis=1)
     # post_mean_list.append(np.mean(random_samples_post_dist))
     # post_var_list.append(np.var(random_samples_post_dist))
@@ -273,7 +286,7 @@ def main():
     # ax.legend(loc='best',labels=['PRE','POST','Random Normal input POST','Randomly sampled data input POST'])
     
     ''' set axis (figure) attribute properties '''
-    ax.legend(loc='best',labels=['PRE','POST'])
+    ax.legend(loc='lower left',labels=['PRE','POST', 'Random PRE','Random POST'])
     params = {"text.color" : "blue",
           "xtick.color" : "crimson",
           "ytick.color" : "crimson"}
@@ -283,7 +296,7 @@ def main():
     ax.set_xlim([-120, 120])
     ax.set_ylim([-120, 120])
     ax.set_title(f'{CHIP} Candidate PRE -> POST')
-
+    ax.grid(True)
     ''' statistics '''
     # random_outputs = [objective(x1, x2) for x1, x2 in zip(random_outputs[:,0], random_outputs[:,1])]
     # random_samples_outputs = [objective(x1, x2) for x1, x2 in zip(random_samples_outputs[:,0], random_samples_outputs[:,1])]
@@ -299,7 +312,7 @@ def main():
     ''' save figure '''
     
     # PRE -> POST case
-    fig.savefig(f'results/{CHIP}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples_PRE_POST.png')
+    fig.savefig(f'results/{CHIP}_{MODEL}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples_{INCREMENT_CONTEXT}.png')
     # PRE-SPI -> POST case
     # fig.savefig(f'results/reflowoven_pre_all_{CHIP}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples__(PRE-SPI)_POST.png')
 

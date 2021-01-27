@@ -5,37 +5,35 @@ toy:
 acquisition:        # by default, it uses multi-start optimization
   option: 1         # acquisition function type: [1: UCB, 2: EI, 3: qEI, ...]
   q: 1              # smallest number of candidates to be considered jointly; q=1 for single-outcome
-  num_restarts: 10  # number of starting points for multi-start acquisition function
-  raw_samples: 10   # number of samples for initialization
   bounds: 120       # 2xd tensor of lower and upper bounds for each column of X
   beta: 0.2         # the smaller value, the more exploitative acquisition function becomes (UCB)
   best_f: 0.1
 
+  num_restarts: 5  # number of starting points for multi-start acquisition function
+  raw_samples: 5   # number of samples for initialization
+
 train:
-  num_iter: 5
-  num_epoch: 200
-  num_samples: 100
+  num_iter: 100
+  num_epoch: 50
+  display_for_every: 1 # number of lines of training state results
+  num_samples: 50
 
 anp:
   input_dim: 3
   output_dim: 1
-  hidden_dim: 32
-  num_context: 90 # must be ${train.num_samples} - ${acquisition.num_restarts or raw_samples}
+  hidden_dim: 128
+  # num_context:(empty) # must be ${train.num_samples} - ${acquisition.num_restarts or raw_samples}
 
 np:
   input_dim: 2
   output_dim: 1
-  repr_dim: 32
-  latent_dim: 32
-  hidden_dim: 32
-  
-  num_context: 90
-  
-
+  repr_dim: 128
+  latent_dim: 128
+  hidden_dim: 128
+  # num_context: (empty) # must be ${train.num_samples} - ${acquisition.num_restarts or raw_samples}
 
 MOM4:
-  # [R0402, R0603, R1005, all]
-  parttype: R1005
+  parttype: R1005 # [R0402, R0603, R1005
   input_var:
     - PRE_L
     - PRE_W

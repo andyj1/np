@@ -110,7 +110,9 @@ class Decoder(nn.Module):
         batch_size, num_points, _ = target_x.size()
         # Repeat z, so it can be concatenated with every x. This changes shape
         # from (batch_size, z_dim) to (batch_size, num_points, z_dim)
+        
         z = z_sample.unsqueeze(1).repeat(1, num_points, 1)
+        
         # Flatten x and z to fit with linear layer
         x_flat = target_x.view(batch_size * num_points, self.input_dim)
         z_flat = z.view(batch_size * num_points, self.latent_dim)

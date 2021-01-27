@@ -129,29 +129,12 @@ class NP(nn.Module):
             prior = torch.distributions.Normal(mu_context, sigma_context)
             
             # find z
-            # TODO: need to reparameterize and make this samples
-            # z = posterior.unsqueeze(1).repeat(1, num_target, 1)
-            
-            # find r
-            batch_size, num_target, _ = x_target.size()
-            # Flatten tensors, as encoder expects one dimensional inputs
-            # TODO
-            print('context x size:',x_context.shape,'target_x size:', num_target, 'in_dim:',self.x_dim)
-            x_flat = x_context.view(batch_size * num_target, self.x_dim)
-            y_flat = y_context.contiguous().view(batch_size * num_target, self.y_dim)
-            # Encode each point into a representation r_i
-            r_i_flat = self.encoder(x_flat, y_flat)
-            # Reshape tensors into batches
-            r_i = r_i_flat.view(batch_size, num_target, self.r_dim)
-            # Aggregate representations r_i into a single representation r
-            r = self.aggregate(r_i)
-            
+            z_sample = posterior.rsample()
             
             kl = np_utils.kl_div(prior, posterior)
             
-            z_sample = posterior.rsample()
-            
             z = z_sample.unsqueeze(1).repeat(1, num_target, 1)
+
             # Get parameters of output distribution
             y_pred_dist, y_pred_mu, y_pred_sigma = self.decoder(x_target, z_sample)
             p_y_pred = torch.distributions.Normal(y_pred_mu, y_pred_sigma)
@@ -169,20 +152,7 @@ class NP(nn.Module):
             
             # find z
             z = z_sample.unsqueeze(1).repeat(1, num_target, 1)
-            
-            
-            # find r
-            batch_size, num_target, _ = x_target.size()
-            # Flatten tensors, as encoder expects one dimensional inputs
-            x_flat = x_context.view(batch_size * num_target, self.x_dim)
-            y_flat = y_context.contiguous().view(batch_size * num_target, self.y_dim)
-            # Encode each point into a representation r_i
-            r_i_flat = self.encoder(x_flat, y_flat)
-            # Reshape tensors into batches
-            r_i = r_i_flat.view(batch_size, num_target, self.r_dim)
-            # Aggregate representations r_i into a single representation r
-            r = self.aggregate(r_i)
-            
+                 
             # Predict target points based on context
             y_pred_dist, y_pred_mu, y_pred_sigma = self.decoder(x_target, z_sample)
             p_y_pred = torch.distributions.Normal(y_pred_mu, y_pred_sigma)
@@ -192,8 +162,9 @@ class NP(nn.Module):
             loss = None
            
         # update r and z for the model
-        self.r = r
+        
         self.z = z
+        self.z_sample = z_sample
          
         return y_pred_mu, y_pred_sigma, log_p, kl, loss
 
@@ -202,10 +173,9 @@ class NP(nn.Module):
     # this is called in analytic_np - base class for the acquisition functions
     def make_np_posterior(self, target_x) -> Posterior:
         target_x = target_x.permute(1,0,2)
-        assert self.r.shape[1] == self.z.shape[1] == target_x.shape[1], \
-            f'r:{self.r.shape}, z:{self.z.shape}, target_x:{target_x.shape}'
+        assert self.z.shape[1] == target_x.shape[1], f'z:{self.z.shape}, target_x:{target_x.shape}'
             
-        # print(f'[INFO] decoder forwarding... r:{self.r.shape},z:{self.z.shape},target_x:{target_x.shape}')
-        dist, _, _ =  self.decoder(self.r, self.z, target_x)
+        # print(f'[INFO] decoder forwarding... z:{self.z.shape}, target_x:{target_x.shape}')
+        dist, _, _ =  self.decoder(target_x, self.z_sample)
         return dist
         

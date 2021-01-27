@@ -10,9 +10,15 @@ def checkParamIsSentToCuda(args):
         status.append(arg.is_cuda)
     return status
 
+from torch.distributions.kl import kl_divergence
+def KLD_gaussian(p, q):
+    '''
+    computes KL(p||q)
+    '''
+    return kl_divergence(p, q).mean(dim=0).sum()
+
 def loadReflowOven(args, chip='R1005', inputtype=0):
     # load RF regressor 
-    print('='*10, 'loading regressor model:', end='')
     loadRFRegressor_start = time.time()
     
     '''

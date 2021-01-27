@@ -64,7 +64,8 @@ def fit_gpytorch_torch(
     track_iterations: bool = True,
     approx_mll: bool = True,
     custom_optimizer: Optional[Optimizer] = None,
-    device = None
+    device = None,
+    display_for_every = 1
 ) -> Tuple[MarginalLogLikelihood, Dict[str, Union[float, List[OptimizationIteration]]]]:
     r"""Fit a gpytorch model by maximizing MLL with a torch optimizer.
 
@@ -109,7 +110,7 @@ def fit_gpytorch_torch(
     optim_options = {"maxiter": 100, "disp": True, "lr": 0.05}
     optim_options.update(options or {})
     exclude = optim_options.pop("exclude", None)
-    DISPLAY_FOR_EVERY = optim_options["maxiter"] // 5 if optim_options["maxiter"]>5 else 1
+    DISPLAY_FOR_EVERY = display_for_every if display_for_every != 1 else optim_options["maxiter"] // 5 if optim_options["maxiter"]>5 else 1
     if exclude is not None:
         mll_params = [
             t for p_name, t in mll.named_parameters() if p_name not in exclude
