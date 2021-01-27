@@ -13,15 +13,15 @@ acquisition:        # by default, it uses multi-start optimization
   raw_samples: 5   # number of samples for initialization
 
 train:
-  num_iter: 100
+  num_iter: 10
   num_epoch: 50
-  display_for_every: 1 # number of lines of training state results
+  display_for_every: 3 # number of lines of training state results printed
   num_samples: 50
 
 anp:
-  input_dim: 3
+  input_dim: 3 # context_x: 2, context_y: 1
   output_dim: 1
-  hidden_dim: 128
+  hidden_dim: 8
   # num_context:(empty) # must be ${train.num_samples} - ${acquisition.num_restarts or raw_samples}
 
 np:

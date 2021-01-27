@@ -1,30 +1,14 @@
 #!/usr/bin/env python3
 
+# reference: https://github.com/soobinseo/Attentive-Neural-Process
+
 import torch
 import torch.nn as nn
-
 import utils.np_utils as np_utils
 from botorch.posteriors.posterior import Posterior
-from gpytorch import settings
 from utils.anp_modules import Decoder, DeterministicEncoder, LatentEncoder
+from utils.utils import KLD_gaussian
 
-# import torch.optim as optim
-# from torch.nn import functional as F
-# from torch.distributions.lowrank_multivariate_normal import LowRankMultivariateNormal
-# from botorch.models.utils import add_output_dim
-# from botorch.posteriors.gpytorch import GPyTorchPosterior
-# from gpytorch.distributions import (MultitaskMultivariateNormal,MultivariateNormal)
-# from gpytorch.lazy import lazify
-# from collections import OrderedDict
-# from contextlib import ExitStack
-# from typing import Any, List, Optional
-
-''' avoids Cholesky decomposition for covariance matrices '''
-# 1. covar_root_decomposition: decomposition using low-rank approx using th eLanczos algorithm
-# 2. log_prob: computed using a modified conjugate gradients algorithm
-# 3. solves: computes positive-definite matrices with preconditioned conjugate gradients
-settings.fast_computations(covar_root_decomposition=True, log_prob=True, solves=True)
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class ANP(nn.Module):
     def __init__(self, cfg):
@@ -44,7 +28,7 @@ class ANP(nn.Module):
         self.z = None
     
     # training (and evaluating) 
-    # same as *fit.py* in custom
+    # same as *fit.py* for GP in custom
     def forward(self, context_x, context_y, target_x, target_y=None):
         
         # add batch size dimension at 0
@@ -53,7 +37,7 @@ class ANP(nn.Module):
         target_x = target_x.unsqueeze(0)
         target_y = target_y.unsqueeze(0)
         
-        # =======save contexts for make_np_posterior============
+        # save contexts for make_np_posterior
         self.context_x = context_x
         self.context_y = context_y
         
@@ -73,10 +57,10 @@ class ANP(nn.Module):
         else:
             z = prior
 
-        z = z.unsqueeze(1).repeat(1, num_targets, 1) # [B, T_target, H]
+        z = z.unsqueeze(1).repeat(1, num_targets, 1) # [batch_size, target_size, hidden_size]
         
         # returns attention query for the encoder input after cross-attention
-        r = self.deterministic_encoder(context_x, context_y, target_x) # [B, T_target, H]
+        r = self.deterministic_encoder(context_x, context_y, target_x) # [batch_size, target_size, hidden_size]
         
         # prediction of target y given r, z, target_x
         dist, mu, sigma = self.decoder(r, z, target_x)
@@ -87,6 +71,7 @@ class ANP(nn.Module):
             posterior = self.latent_encoder(target_x, target_y)
             
             # get log probability
+            print('BCELOSS INPUT:',mu, torch.sigmoid(mu), target_y)
             bce_loss = self.BCELoss(torch.sigmoid(mu), target_y)
             
             # get KL divergence between prior and posterior
@@ -94,10 +79,9 @@ class ANP(nn.Module):
             kl = 0.5 * kl_div.sum()
             
             # the following gives runtime error
-            # p_context = torch.distributions.normal.Normal(loc=prior_mu, scale=prior_var)
-            # q_target = torch.distributions.normal.Normal(loc=posterior_mu, scale=posterior_var)            
-            # from utils.utils import KLD_gaussian
-            # kl = KLD_gaussian(q_target, p_context).mean(dim=0).sum()
+            p = torch.distributions.normal.Normal(loc=prior_mu, scale=prior_var)
+            q = torch.distributions.normal.Normal(loc=posterior_mu, scale=posterior_var)   
+            kl = KLD_gaussian(q, p).mean(dim=0).sum()
 
             # maximize prob and minimize KL divergence
             # print('BCE:',bce_loss.item())
@@ -126,6 +110,9 @@ class ANP(nn.Module):
             f'r:{self.r.shape}, z:{self.z.shape}, target_x:{target_x.shape}'
             
         # print(f'[INFO] decoder forwarding... r:{self.r.shape},z:{self.z.shape},target_x:{target_x.shape}')
+        self.decoder.eval()
+        
+        print(f'target_x:{target_x.shape}, r:{self.r.shape}, z:{self.z.shape}')
         dist, _, _ =  self.decoder(self.r, self.z, target_x)
         return dist
         

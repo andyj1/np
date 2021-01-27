@@ -9,7 +9,7 @@ from utils.utils import reflow_oven
 pd.set_option('display.max_columns', None)
 
 # pandas dataframe to flattened tensor shape
-def flatten(df) -> torch.FloatTensor:
+def flatten(df): # -> torch.FloatTensor
     return torch.FloatTensor(df.to_numpy().reshape(-1,df.shape[1]))
 
 '''
@@ -58,7 +58,7 @@ def getMOM4data(cfg, data_path='./data/imputed_data.csv'):
     return inputs, outputs
 
 '''
-getMOM4chipdata: retrieves dataframe for the particular chip or all chips ('chiptype)
+getMOM4chipdata: retrieves dataframe for the particular chip or all chips ('chiptype')
 '''
 def getMOM4chipdata(cfg, data_path):
     # config

@@ -1,35 +1,15 @@
 #!/usr/bin/env python3
 
+# reference: https://github.com/EmilienDupont/neural-processes
 import sys
-from collections import OrderedDict
-from contextlib import ExitStack
-from typing import Any, List, Optional
 
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from botorch.models.utils import add_output_dim
-from botorch.posteriors.gpytorch import GPyTorchPosterior
-from gpytorch import settings
-from gpytorch.distributions import (MultitaskMultivariateNormal,
-                                    MultivariateNormal)
-# from torch.distributions.lowrank_multivariate_normal import LowRankMultivariateNormal
-from gpytorch.lazy import lazify
-from torch.nn import functional as F
-from utils.np_modules import Encoder, Decoder, Repr2Latent
 import utils.np_utils as np_utils
 from botorch.posteriors.posterior import Posterior
+from torch.nn import functional as F
+from utils.np_modules import Decoder, Encoder, Repr2Latent
 
-
-''' avoids Cholesky decomposition for covariance matrices '''
-# 1. covar_root_decomposition: decomposition using low-rank approx using th eLanczos algorithm
-# 2. log_prob: computed using a modified conjugate gradients algorithm
-# 3. solves: computes positive-definite matrices with preconditioned conjugate gradients
-settings.fast_computations(covar_root_decomposition=True, log_prob=True, solves=True)
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class NP(nn.Module):
     def __init__(self, cfg):
@@ -127,11 +107,11 @@ class NP(nn.Module):
             # Sample from encoded distribution using reparameterization trick
             posterior = torch.distributions.Normal(mu_target, sigma_target)
             prior = torch.distributions.Normal(mu_context, sigma_context)
+            kl = np_utils.kl_div(prior, posterior)
             
             # find z
             z_sample = posterior.rsample()
             
-            kl = np_utils.kl_div(prior, posterior)
             
             z = z_sample.unsqueeze(1).repeat(1, num_target, 1)
 
@@ -176,6 +156,8 @@ class NP(nn.Module):
         assert self.z.shape[1] == target_x.shape[1], f'z:{self.z.shape}, target_x:{target_x.shape}'
             
         # print(f'[INFO] decoder forwarding... z:{self.z.shape}, target_x:{target_x.shape}')
+        self.decoder.eval()
+        print(f'target_x:{target_x}, z_sample:{self.z_sample}')
         dist, _, _ =  self.decoder(target_x, self.z_sample)
         return dist
         

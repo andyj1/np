@@ -23,15 +23,16 @@ from utils.np_utils import random_split_context_target
 def save_ckpt(model, optimizer, toy_bool, np_bool, chip, iter):
     checkpoint = {'state_dict': model.state_dict(),
                     'optimizer' : optimizer.state_dict()}
-    base_path = f'ckpts/checkpoint_iter_{iter}_'
-    data_type = f"toy_" if toy_bool else f"{chip}_"
+    base_path = f'ckpts/'
+    chip_path = f'{chip}/' if chip is not 'toy' else 'toy/'
+    
+    checkpoint_path = f'checkpoint_{iter}_'
     model_type = 'NP' if np_bool else 'GP'
     extension = '.pt'
     
-    save_path = base_path + data_type + model_type + extension
+    save_path = base_path + chip_path + checkpoint_path + model_type + extension
     torch.save(checkpoint, save_path)
-    
-    
+        
 class SurrogateModel(object):
     def __init__(self, train_X, train_Y, args, cfg, writer, device=torch.device('cpu'), epochs=100, model_type='GP'):
         super(SurrogateModel, self).__init__()
