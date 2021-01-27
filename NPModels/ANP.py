@@ -71,21 +71,23 @@ class ANP(nn.Module):
             posterior = self.latent_encoder(target_x, target_y)
             
             # get log probability
-            print('BCELOSS INPUT:',mu, torch.sigmoid(mu), target_y)
+            mu /= 1000
+            target_y /= 1000
+            # print('BCELOSS INPUT:',mu, torch.sigmoid(mu), target_y)
             bce_loss = self.BCELoss(torch.sigmoid(mu), target_y)
             
             # get KL divergence between prior and posterior
-            kl_div = (torch.exp(posterior_var) + (posterior_mu - prior_mu) ** 2) / torch.exp(prior_var) - 1. + (prior_var - posterior_var)
-            kl = 0.5 * kl_div.sum()
+            # kl_div = (torch.exp(posterior_var) + (posterior_mu - prior_mu) ** 2) / torch.exp(prior_var) - 1. + (prior_var - posterior_var)
+            # kl = 0.5 * kl_div.sum()
             
             # the following gives runtime error
             p = torch.distributions.normal.Normal(loc=prior_mu, scale=prior_var)
             q = torch.distributions.normal.Normal(loc=posterior_mu, scale=posterior_var)   
             kl = KLD_gaussian(q, p).mean(dim=0).sum()
-
+            kl *= 10
             # maximize prob and minimize KL divergence
-            # print('BCE:',bce_loss.item())
-            # print('KLD:',kl.item())
+            print('BCE:',bce_loss.item())
+            print('KLD:',kl.item())
             loss = bce_loss + kl
         
         # For Generation
@@ -112,7 +114,7 @@ class ANP(nn.Module):
         # print(f'[INFO] decoder forwarding... r:{self.r.shape},z:{self.z.shape},target_x:{target_x.shape}')
         self.decoder.eval()
         
-        print(f'target_x:{target_x.shape}, r:{self.r.shape}, z:{self.z.shape}')
+        # print(f'target_x:{target_x.shape}, r:{self.r.shape}, z:{self.z.shape}')
         dist, _, _ =  self.decoder(self.r, self.z, target_x)
         return dist
         

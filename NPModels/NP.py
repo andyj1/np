@@ -8,61 +8,27 @@ import torch.nn as nn
 import utils.np_utils as np_utils
 from botorch.posteriors.posterior import Posterior
 from torch.nn import functional as F
-from utils.np_modules import Decoder, Encoder, Repr2Latent
-
+from utils.np_modules import Decoder, DeterministicEncoder, LatentEncoder
 
 class NP(nn.Module):
     def __init__(self, cfg):
         super(NP, self).__init__()
-        self.x_dim = cfg['np']['input_dim']
-        self.y_dim = cfg['np']['output_dim']
-        self.r_dim = cfg['np']['repr_dim']
-        self.z_dim = cfg['np']['latent_dim'] 
+        self.x_dim = cfg['np']['input_dim']  # x
+        self.y_dim = cfg['np']['output_dim'] # y
+        self.r_dim = cfg['np']['repr_dim']   # r
+        self.z_dim = cfg['np']['latent_dim'] # z
         self.h_dim = cfg['np']['hidden_dim'] # for encoder and decoder hidden layers
 
-        self.encoder = Encoder(self.x_dim, self.y_dim, self.h_dim, self.r_dim)
-        self.r_to_z = Repr2Latent(self.r_dim, self.z_dim)
+        self.encoder = DeterministicEncoder(self.x_dim, self.y_dim, self.h_dim, self.r_dim)
+        self.latent_encoder = LatentEncoder(self.r_dim, self.z_dim, self.h_dim, self.x_dim, self.y_dim)
         self.decoder = Decoder(self.x_dim, self.z_dim, self.h_dim, self.y_dim)
         
-        self.BCELoss = nn.BCELoss()
+        self.BCELoss = nn.BCELoss(reduction='mean')
         self.num_outputs = self.y_dim
         
         self.r = None
         self.z = None
 
-    def aggregate(self, r_i):
-            """
-            Aggregates representations for every (x_i, y_i) pair into a single
-            representation.
-            Parameters
-            ----------
-            r_i : torch.Tensor
-                Shape (batch_size, num_points, r_dim)
-            """
-            return torch.mean(r_i, dim=1)
-    def xy_to_mu_sigma(self, x, y):
-        """
-        Maps (x, y) pairs into the mu and sigma parameters defining the normal
-        distribution of the latent variables z.
-        Parameters
-        ----------
-        x : torch.Tensor
-            Shape (batch_size, num_points, x_dim)
-        y : torch.Tensor
-            Shape (batch_size, num_points, y_dim)
-        """
-        batch_size, num_points, _ = x.size()
-        # Flatten tensors, as encoder expects one dimensional inputs
-        x_flat = x.view(batch_size * num_points, self.x_dim)
-        y_flat = y.contiguous().view(batch_size * num_points, self.y_dim)
-        # Encode each point into a representation r_i
-        r_i_flat = self.encoder(x_flat, y_flat)
-        # Reshape tensors into batches
-        r_i = r_i_flat.view(batch_size, num_points, self.r_dim)
-        # Aggregate representations r_i into a single representation r
-        r = self.aggregate(r_i)
-        # Return parameters of distribution
-        return self.r_to_z(r)
 
     def forward(self, x_context, y_context, x_target, y_target = None):
         """
@@ -102,8 +68,8 @@ class NP(nn.Module):
         if y_target is not None: 
             # Encode target and context (context needs to be encoded to
             # calculate kl term)
-            mu_target, sigma_target = self.xy_to_mu_sigma(x_target, y_target)
-            mu_context, sigma_context = self.xy_to_mu_sigma(x_context, y_context)
+            mu_target, sigma_target = self.latent_encoder(x_target, y_target)
+            mu_context, sigma_context = self.latent_encoder(x_context, y_context)
             # Sample from encoded distribution using reparameterization trick
             posterior = torch.distributions.Normal(mu_target, sigma_target)
             prior = torch.distributions.Normal(mu_context, sigma_context)
@@ -125,7 +91,7 @@ class NP(nn.Module):
         # testing mode
         else:
             # At testing time, encode only context
-            mu_context, sigma_context = self.xy_to_mu_sigma(x_context, y_context)
+            mu_context, sigma_context = self.latent_encoder(x_context, y_context)
             # Sample from distribution based on context
             prior = torch.distributions.Normal(mu_context, sigma_context)
             z_sample = prior.rsample()
@@ -142,8 +108,6 @@ class NP(nn.Module):
             loss = None
            
         # update r and z for the model
-        
-        self.z = z
         self.z_sample = z_sample
          
         return y_pred_mu, y_pred_sigma, log_p, kl, loss
@@ -153,11 +117,9 @@ class NP(nn.Module):
     # this is called in analytic_np - base class for the acquisition functions
     def make_np_posterior(self, target_x) -> Posterior:
         target_x = target_x.permute(1,0,2)
-        assert self.z.shape[1] == target_x.shape[1], f'z:{self.z.shape}, target_x:{target_x.shape}'
-            
-        # print(f'[INFO] decoder forwarding... z:{self.z.shape}, target_x:{target_x.shape}')
         self.decoder.eval()
-        print(f'target_x:{target_x}, z_sample:{self.z_sample}')
+        # print(f'target_x:{target_x}, z_sample:{self.z_sample}')
+        
         dist, _, _ =  self.decoder(target_x, self.z_sample)
         return dist
         

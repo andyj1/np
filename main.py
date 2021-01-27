@@ -245,7 +245,7 @@ def main():
     print('=== summary ===')
     for idx, item in enumerate(list_to_stat):
         describe_item = make_pd_series(item, name=labels[idx]).describe()
-        print(f"{labels[idx]} --> \t {describe_item.loc['mean']:.4f} +/- {describe_item.loc['std']:.4f}")
+        print(f"{labels[idx]} --> \t {CBLUE} {describe_item.loc['mean']:.4f} {CEND} +/- {describe_item.loc['std']:.4f}")
     # stats = pd.concat(list_to_stat, dtype=float, names=labels, axis=1)
     # stats.to_csv(f'./results/{CHIP}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples_stats.csv')
         
@@ -260,7 +260,7 @@ def main():
     ax.set_ylabel('y (\u03BCm)')
     ax.set_xlim([-120, 120])
     ax.set_ylim([-120, 120])
-    ax.set_title(f'{MODEL} {CHIP}, initial {NUM_SAMPLES} samples, ')
+    ax.set_title(f'{CHIP}, {MODEL} ({NUM_SAMPLES} initial samples)')
     ax.grid(True)
     
     # save figure

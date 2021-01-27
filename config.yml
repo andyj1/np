@@ -15,7 +15,7 @@ acquisition:        # by default, it uses multi-start optimization
 train:
   num_iter: 10
   num_epoch: 50
-  display_for_every: 3 # number of lines of training state results printed
+  display_for_every: 10 # number of lines of training state results printed
   num_samples: 50
 
 anp:

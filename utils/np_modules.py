@@ -4,8 +4,10 @@ import torch
 import torch.nn as nn
 import sys
 
-class Encoder(nn.Module):
-    """Maps an (x_i, y_i) pair to a representation r_i.
+class DeterministicEncoder(nn.Module):
+    """Maps an (x_i, y_i) pair to a representation r_i
+    
+    >> determinisitic path
     Parameters
     ----------
     x_dim : int
@@ -18,7 +20,7 @@ class Encoder(nn.Module):
         Dimension of output representation r.
     """
     def __init__(self, x_dim, y_dim, h_dim, r_dim):
-        super(Encoder, self).__init__()
+        super(DeterministicEncoder, self).__init__()
 
         self.x_dim = x_dim
         self.y_dim = y_dim
@@ -44,20 +46,23 @@ class Encoder(nn.Module):
         return self.input_to_hidden(input_pairs)
 
 
-class Repr2Latent(nn.Module):
+class LatentEncoder(nn.Module):
     """
-    Maps a representation r to mu and sigma which will define the normal
-    distribution from which we sample the latent variable z.
+    Maps (x, y) pairs into the mu and sigma parameters defining the normal
+    distribution of the latent variables z.
     Parameters
     ----------
-    r_dim : int
-        Dimension of output representation r.
-    z_dim : int
-        Dimension of latent variable z.
+    x : torch.Tensor
+        Shape (batch_size, num_points, x_dim)
+    y : torch.Tensor
+        Shape (batch_size, num_points, y_dim)
     """
-    def __init__(self, r_dim, z_dim):
-        super(Repr2Latent, self).__init__()
-
+    def __init__(self, r_dim, z_dim, h_dim, x_dim, y_dim):
+        super(LatentEncoder, self).__init__()
+    
+        self.x_dim = x_dim
+        self.y_dim = y_dim
+        self.h_dim = h_dim
         self.r_dim = r_dim
         self.z_dim = z_dim
 
@@ -65,11 +70,35 @@ class Repr2Latent(nn.Module):
         self.hidden_to_mu = nn.Linear(r_dim, z_dim)
         self.hidden_to_sigma = nn.Linear(r_dim, z_dim)
 
-    def forward(self, r):
+        self.deterministic_encoder = DeterministicEncoder(self.x_dim, self.y_dim, self.h_dim, self.r_dim)
+    def aggregate(self, r_i):
+        """
+        Aggregates representations for every (x_i, y_i) pair into a single
+        representation.
+        Parameters
+        ----------
+        r_i : torch.Tensor
+            Shape (batch_size, num_points, r_dim)
+        """
+        return torch.mean(r_i, dim=1)
+    
+    def forward(self, x, y):
         """
         r : torch.Tensor
             Shape (batch_size, r_dim)
         """
+        batch_size, num_points, _ = x.size()
+        # Flatten tensors, as encoder expects one dimensional inputs
+        x_flat = x.view(batch_size * num_points, self.x_dim)
+        y_flat = y.contiguous().view(batch_size * num_points, self.y_dim)
+        # Encode each point into a representation r_i
+        
+        r_i_flat = self.deterministic_encoder(x_flat, y_flat)
+        # Reshape tensors into batches
+        r_i = r_i_flat.view(batch_size, num_points, self.r_dim)
+        # Aggregate representations r_i into a single representation r
+        r = self.aggregate(r_i)
+                
         hidden = torch.relu(self.r_to_hidden(r))
         mu = self.hidden_to_mu(hidden)
         # Define sigma following convention in "Empirical Evaluation of Neural
@@ -135,4 +164,3 @@ class Decoder(nn.Module):
         
         
         return mvn_dist, mu, sigma
-        
