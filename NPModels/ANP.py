@@ -6,9 +6,8 @@ import torch
 import torch.nn as nn
 import utils.np_utils as np_utils
 from botorch.posteriors.posterior import Posterior
-from utils.anp_modules import Decoder, DeterministicEncoder, LatentEncoder
+from NPModels.anp_modules import Decoder, DeterministicEncoder, LatentEncoder
 from utils.utils import KLD_gaussian
-
 
 class ANP(nn.Module):
     def __init__(self, cfg):
