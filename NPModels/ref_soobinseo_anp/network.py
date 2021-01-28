@@ -46,7 +46,12 @@ class LatentModel(nn.Module):
         # For Training
         if target_y is not None:
             # get log probability
+            print('LOGITS AND TARGETS')
+            print('y_pred:',y_pred, '\nsigmoid y_pred:',torch.sigmoid(y_pred), '\ntarget_y:',target_y)
+            import sys
+            sys.exit(0)
             bce_loss = self.BCELoss(torch.sigmoid(y_pred), target_y)
+            print(bce_loss.item())
             
             # get KL divergence between prior and posterior
             kl = kl_div(prior_mu, prior_var, posterior_mu, posterior_var)

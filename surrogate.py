@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
 
+import random
+import sys
+import time
+
+import numpy as np
 import torch
 import torch.nn as nn
+import torch.optim as optim
 from botorch.models import SingleTaskGP
 from gpytorch.constraints.constraints import GreaterThan
 from gpytorch.mlls import ExactMarginalLogLikelihood
+from torch.optim import SGD
+from tqdm import trange
+
 # from botorch.fit import fit_gpytorch_model
 from custom.fit import fit_gpytorch_torch
-
-from torch.optim import SGD
-import torch.optim as optim
-from tqdm import trange
-import sys
-
-import random
-import numpy as np
-
-from NPModels.NP import NP as NeuralProcesses
 from NPModels.ANP import ANP as AttentiveNeuralProcesses
+from NPModels.NP import NP as NeuralProcesses
 from utils.np_utils import random_split_context_target
+
 
 def save_ckpt(model, optimizer, toy_bool, np_bool, chip, iter):
     checkpoint = {'state_dict': model.state_dict(),
@@ -37,6 +38,8 @@ class SurrogateModel(object):
     def __init__(self, train_X, train_Y, args, cfg, writer, device=torch.device('cpu'), epochs=100, model_type='GP'):
         super(SurrogateModel, self).__init__()
         
+        start_time = time.time()
+        
         self.epochs = epochs
         self.model_type = model_type
         if self.model_type == 'NP':
@@ -49,8 +52,7 @@ class SurrogateModel(object):
             mll = ExactMarginalLogLikelihood(likelihood=self.model.likelihood, model=self.model)
             mll.to(train_X)
         
-        global DISPLAY_FOR_EVERY
-        DISPLAY_FOR_EVERY = cfg['train']['display_for_every']
+        self.DISPLAY_FOR_EVERY = cfg['train']['display_for_every']
         # optimizer_cls = optim.AdamW
         # optimizer_cls = optim.SparseAdam # doesn't support dense gradients
         # self.optimizer_cls = optim.Adamax
@@ -62,6 +64,9 @@ class SurrogateModel(object):
         self.dtype = torch.float
         self.writer = writer
 
+        end_time = time.time()
+        print(': took %.3f seconds' % (end_time-start_time))
+        
     # custom GP fitting
     def fitGP(self, train_X, train_Y, cfg, toy_bool=False, iter=0):
         chip = cfg['MOM4']['parttype']
@@ -92,7 +97,7 @@ class SurrogateModel(object):
                                             approx_mll=True, \
                                             custom_optimizer=self.optimizer, \
                                             device=self.device,
-                                            display_for_every=DISPLAY_FOR_EVERY)
+                                            display_for_every=self.DISPLAY_FOR_EVERY)
         loss = info_dict['fopt']
         self.model = mll.model
         
@@ -130,11 +135,17 @@ class SurrogateModel(object):
         info_dict = {}
         # not re-initializing the model (already defined at self.model)
         self.model.train()
-        optimizer = optim.Adam(self.model.parameters(), lr=0.01)
+        lr = cfg['train']['lr']
+        optimizer = optim.Adam(self.model.parameters(), lr=lr)
 
-        training_loss = 0
         num_context = cfg[self.model_type.lower()]['num_context']
+        
+                
         for train_epoch in range(self.epochs):
+            loss = 0.0
+            
+            self.adjust_learning_rate(optimizer, train_epoch+1)
+            
             optimizer.zero_grad()
             # split into context and target
             x_context, y_context, x_target, y_target = random_split_context_target(train_X, train_Y, num_context)
@@ -148,20 +159,22 @@ class SurrogateModel(object):
             y_target = y_target.to(self.device)
 
             # forward pass
-            mu, sigma, log_p, kl, loss = self.model(x_context, y_context, x_target, y_target)
-            self.writer.add_scalar(f"Loss/train_NP_{cfg['train']['num_samples']}_samples_fitNP", loss.item(), train_epoch)
-
+            mu, sigma, log_p, kl, loss_val = self.model(x_context, y_context, x_target, y_target)
+            # self.writer.add_scalar(f"Loss/train_NP_{cfg['train']['num_samples']}_samples_fitNP", loss.item(), train_epoch)
+            
+            loss += -loss_val
             # backprop
-            training_loss = loss.item()
-            loss.backward()
+            # training_loss = loss.item()
+            
+            loss.mean().backward()
             optimizer.step()
-            if (train_epoch+1) % (self.epochs//DISPLAY_FOR_EVERY) == 0:
-                print('[INFO] train_epoch: {}/{}, loss: {}'.format(train_epoch+1, self.epochs, training_loss))
+            if (train_epoch+1) % (self.epochs//self.DISPLAY_FOR_EVERY) == 0:
+                print('[INFO] train_epoch: {}/{}, \033[94m loss: {} \033[0m'.format(train_epoch+1, self.epochs, loss.mean().item()))
         
         
         save_ckpt(self.model, self.optimizer, toy_bool, True, chip, iter)
 
-        info_dict['fopt'] = training_loss
+        info_dict['fopt'] = loss.mean().item()
         return info_dict
 
     # '''
@@ -177,3 +190,8 @@ class SurrogateModel(object):
     #             lower, upper = posterior.mvn.confidence_region()
     #         return posterior.mean.cpu().numpy(), (lower.cpu().numpy(), upper.cpu().numpy())
 
+    
+    def adjust_learning_rate(self, optimizer, step_num, warmup_step=4000):
+        lr = 0.001 * warmup_step**0.5 * min(step_num * warmup_step**-1.5, step_num**-0.5)
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr

@@ -29,9 +29,7 @@ CCYAN   = '\033[93m'
 CBLUE   = '\033[94m'
 CEND    = '\033[0m'
 
-'''
-parse arguments
-'''
+''' parse arguments '''
 def parse():
     parse_start = time.time()
     
@@ -48,6 +46,7 @@ def parse():
     parse_end = time.time(); print('parsing took: %.3f seconds' % (parse_end - parse_start))
     return args
 
+''' main function '''
 def main():
     args = parse()
     device = set_global_params()    
@@ -64,17 +63,21 @@ def main():
     
     # manipulate cfg for context and target size
     cfg['acquisition']['num_restarts'] = cfg['acquisition']['raw_samples']
-    cfg[args.model.lower()]['num_context'] = (cfg['train']['num_samples'] - cfg['acquisition']['num_restarts'])
+    if args.model.lower() in cfg.keys():
+        cfg[args.model.lower()]['num_context'] = (cfg['train']['num_samples'] - cfg['acquisition']['num_restarts'])
+    else:
+        cfg[args.model.lower()] = {'num_context': (cfg['train']['num_samples'] - cfg['acquisition']['num_restarts'])}
     
+    # tensorboard 
     writer = SummaryWriter(f'runs/{CHIP}_{MODEL}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples')
     
     # load reflow oven regressor
-    print('loading regressor model...')
-    regr_multirf = loadReflowOven(args)
+    regr_multirf, elapsed_time = loadReflowOven(args)
+    print('[INFO] loading regressor model took: %.3f seconds' % elapsed_time)
     
     # load data
     data_path = './data/imputed_data.csv'
-    print(f'loading data from {data_path}')
+    print(f'[INFO] loading data from {data_path}', end='')
     inputs, outputs = getTOYdata(cfg, model=regr_multirf) if args.toy else getMOM4data(cfg, data_path=data_path)
     
     # objective function: to minimize the distance from POST to origin toward zero
@@ -85,7 +88,7 @@ def main():
     initial_output_dists = np.array([objective(x,y) for x, y in zip(outputs[:,0], outputs[:,1])])
 
     # initialize model and likelihood
-    print('initializing surrogate model')
+    print('[INFO] initializing surrogate model:', MODEL, end='')
     ITER_FROM = 0
     surrogate = SurrogateModel(inputs, targets, args, cfg,
                                writer = writer, device = device, 
@@ -108,22 +111,18 @@ def main():
     assert [True, True, True] == checkParamIsSentToCuda([next(surrogate.model.parameters()), inputs, targets]) if device == 'cuda' else [False,False,False]
 
     # prepare folders for checkpoints
-    torch.backends.cudnn.benchmark = True
     folders = ['ckpts','ckpts/R0402','ckpts/R0603','ckpts/R1005','ckpts/all', 'ckpts/toy']
     for folder in folders:
         if not os.path.isdir(folder):
             os.makedirs(folder, exist_ok=True, mode=0o755)
 
     # initial training before the acquisition loop
-    initial_train_start = time.time()
-    print('training (iteration: %s)' % ITER_FROM)
     optimize_np_bool = False
+    initial_train_start = time.time()
     if 'NP' in MODEL:
-        print('[INFO] initializing Neural Process:', MODEL)
         optimize_np_bool = True
         info_dict = surrogate.fitNP(inputs, targets, cfg, toy_bool=args.toy)
     else:
-        print('[INFO] initializing Gaussian Process:', MODEL)
         info_dict = surrogate.fitGP(inputs, targets, cfg, toy_bool=args.toy, iter=ITER_FROM)
     initial_train_end = time.time()
     print(f'[INFO] initial train time: {initial_train_end-initial_train_start:.3f} sec')
@@ -171,14 +170,15 @@ def main():
         
         # adjust context or target size
         ''' do either of the following '''
-        if args.context == True:
-            # increment context size
-            cfg[args.model.lower()]['num_context'] += 1 # prior
-        else:
-            # increment target size
-            acq_fcn.num_restarts += 1
-            acq_fcn.raw_samples += 1
-        print(f"[INFO] context size: {cfg[args.model.lower()]['num_context']}, Target size: {acq_fcn.num_restarts}")
+        if 'NP' in MODEL:
+            if args.context == True:
+                # increment context size
+                cfg[args.model.lower()]['num_context'] += 1 # prior
+            else:
+                # increment target size
+                acq_fcn.num_restarts += 1
+                acq_fcn.raw_samples += 1
+            print(f"[INFO] NP: context size: {cfg[args.model.lower()]['num_context']}, target size: {acq_fcn.num_restarts}")
         
         # re-initialize the models so they are ready for fitting on next iteration and re-train
         retrain_start = time.time()
@@ -229,14 +229,14 @@ def main():
     random_y = (max_input_y - min_input_y) * torch.rand(cfg['train']['num_samples'],1, device='cpu') + min_input_y
     random_samples = np.concatenate((random_x, random_y), axis=1)
     random_samples_outputs = reflow_oven(random_samples[:,0:2], regr_multirf)
-    ax.scatter(random_samples[:,0], random_samples[:,1], s=10, alpha=0.5, color='yellow', label='random PRE')
-    ax.scatter(random_samples_outputs[:,0], random_samples_outputs[:,1], s=10, alpha=1, color='blue', label='random POST')
+    # ax.scatter(random_samples[:,0], random_samples[:,1], s=10, alpha=0.5, color='yellow', label='random PRE')
+    # ax.scatter(random_samples_outputs[:,0], random_samples_outputs[:,1], s=10, alpha=1, color='blue', label='random POST')
     
     # print stats
     candidates_input_dist = np.asarray(candidates_input_dist)
     candidates_output_dist = np.asarray(candidates_output_dist)
-    # initial_input_dists
-    # initial_output_dists
+    # # initial_input_dists
+    # # initial_output_dists
     random_samples_input_dist = np.array([objective(x,y) for x, y in zip(random_samples[:,0], random_samples[:,1])])
     random_samples_output_dist = np.array([objective(x,y) for x, y in zip(random_samples_outputs[:,0], random_samples_outputs[:,1])])
     
@@ -251,7 +251,8 @@ def main():
         
     # set axis (figure) attribute properties
     # ax.legend(loc='best',labels=['PRE','POST','Random Normal input POST','Randomly sampled data input POST'])
-    ax.legend(loc='lower left',labels=['candidate PRE','candidate POST', 'random PRE','random POST'])
+    # ax.legend(loc='lower left',labels=['candidate PRE','candidate POST', 'random PRE','random POST'])
+    ax.legend(loc='lower left',labels=['candidate PRE','candidate POST'])
     params = {"text.color" : "blue",
           "xtick.color" : "crimson",
           "ytick.color" : "crimson"}
@@ -265,7 +266,12 @@ def main():
     
     # save figure
     context_or_target = 'context++' if args.context else 'target++'
-    fig.savefig(f'results/{CHIP}_{MODEL}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples_{context_or_target}.png')
+    image_save_path = f'results/{CHIP}_{MODEL}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples'
+    if 'NP' in MODEL:
+         image_save_path += f'_{context_or_target}.png'
+    else:
+        image_save_path += '.png'
+    fig.savefig(image_save_path)
     
     writer.flush()
     writer.close()

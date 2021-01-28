@@ -71,8 +71,9 @@ class ANP(nn.Module):
             posterior = self.latent_encoder(target_x, target_y)
             
             # get log probability
-            mu /= 1000
-            target_y /= 1000
+            # mu /= 1000
+            # target_y /= 1000
+            
             # print('BCELOSS INPUT:',mu, torch.sigmoid(mu), target_y)
             bce_loss = self.BCELoss(torch.sigmoid(mu), target_y)
             
@@ -84,7 +85,7 @@ class ANP(nn.Module):
             p = torch.distributions.normal.Normal(loc=prior_mu, scale=prior_var)
             q = torch.distributions.normal.Normal(loc=posterior_mu, scale=posterior_var)   
             kl = KLD_gaussian(q, p).mean(dim=0).sum()
-            kl *= 10
+            
             # maximize prob and minimize KL divergence
             print('BCE:',bce_loss.item())
             print('KLD:',kl.item())

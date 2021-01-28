@@ -6,9 +6,9 @@ reflow_oven/models/*.pkl
 data_analysis/*.pkl
 data_analysis/*.p
 
-runs/
-
-todo.md
+runs/*
+NPModels/ref_*
+NPModels/ref_*
 
 # omit checkpoints
 *.pt

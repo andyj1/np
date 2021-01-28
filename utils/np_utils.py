@@ -1,28 +1,36 @@
 #!/usr/bin/env python3
 
 import os
-import matplotlib.pyplot as plt
+
 import numpy as np
 import torch
 from torch.distributions.kl import kl_divergence
-from numpy import arange, argmax, asarray, vstack
 
-# utility functions
-def log_likelihood(mu, std, target):
-    mu = mu.unsqueeze(dim=0)
-    std = std.unsqueeze(dim=0)
-    norm = torch.distributions.Normal(mu, std)
+def log_likelihood(mu, sigma, target):
+    target = target.squeeze(0)
     target = target.unsqueeze(dim=1)
-    return norm.log_prob(target).sum(dim=0).mean()
-
-
-def kl_div(q_target, q_context):
-    ''' example
-    dist1 = torch.distributions.normal.Normal(loc=a, scale=b)
-    dist2 = torch.distributions.normal.Normal(loc=c, scale=d)
-    ans4 = KLD_gaussian(dist1, dist2)
+    mu = mu.unsqueeze(dim=0)
+    sigma = sigma.unsqueeze(dim=0)
     '''
-    return kl_divergence(q_target, q_context).mean(dim=0).sum()
+    [LOG LIKELIHOOD] target: torch.Size([num_target, 1, 1]) 
+                        mu: torch.Size([1, num_target, z_dim*2, 1]) 
+                        sigma: torch.Size([1, num_target, z_dim*2, 1])
+    '''
+    # print('target:', target.shape, 'mu:',mu.shape, 'sigma:',sigma.shape)
+    
+    # norm = torch.distributions.Normal(mu.squeeze(0), sigma.squeeze(0))
+    # return norm.log_prob(target).sum(dim=0).mean()
+
+    # equation: https://www.statlect.com/glossary/log-likelihood
+    return -(target - mu)**2 / (2 * sigma**2) - torch.log(sigma)
+
+def kl_div(q_target, p_context):
+    ''' example
+    posterior = torch.distributions.normal.Normal(loc=mu, scale=sigma)
+    prior = torch.distributions.normal.Normal(loc=mu, scale=sigma)
+    kl_div(posterior, prior) := KLD(posterior || prior)
+    '''
+    return kl_divergence(q_target, p_context).mean(dim=0).sum()
 
 def random_split_context_target(x, y, n_context):
     ind = np.arange(x.shape[0])
@@ -39,13 +47,12 @@ def random_split_context_target(x, y, n_context):
     return context_x, context_y, target_x, target_y
 
 # reparam trick for tractability in randomness in the input
-def reparametrize(z):
-    mu, logvar = z
-    std = torch.exp(0.5 * logvar)
-    eps = torch.randn_like(std)
-    z_sample = eps.mul(std).add_(mu)
-    z_sample = z_sample.unsqueeze(1).expand(-1, 784, -1)
-    return z_sample
+# def reparametrize(mu, logvar, num_target):
+#     std = torch.exp(0.5 * logvar)
+#     eps = torch.randn_like(std)
+#     z_sample = eps.mul(std).add_(mu)
+#     z_sample = z_sample.unsqueeze(1).expand(-1, num_target, -1)
+#     return z_sample
 
 
 

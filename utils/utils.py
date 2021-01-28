@@ -45,8 +45,8 @@ def loadReflowOven(args):
     regr_multirf = joblib.load(reflow_oven_model_path)
 
     loadRFRegressor_end = time.time()
-    print(': took: %.3f seconds' % (loadRFRegressor_end - loadRFRegressor_start))
-    return regr_multirf
+    time_taken = loadRFRegressor_end - loadRFRegressor_start
+    return regr_multirf, time_taken
 
 '''
 objective function value which the surrogate model is outputting and the acquisition function is minimizing
@@ -84,7 +84,7 @@ def set_decomposition_type(cholesky: bool):
         settings.fast_computations(covar_root_decomposition=set_bool, 
                                     log_prob=set_bool, 
                                     solves=set_bool)
-        
+
 '''
 set device, suppress warnings, set seed value
 '''
@@ -99,6 +99,11 @@ def set_global_params():
     # set seed for reproducibility
     SEED = 42
     torch.manual_seed(SEED)
+    
+    # sets behchmark mode in cudnn
+    # benchmark mode is good whenever your input sizes for your network do not vary
+    # ref: https://discuss.pytorch.org/t/what-does-torch-backends-cudnn-benchmark-do/5936
+    torch.backends.cudnn.benchmark = True
 
     return device
 

@@ -1,166 +1,106 @@
 #!/usr/bin/env python3
 
-import torch
-import torch.nn as nn
 import sys
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
 class DeterministicEncoder(nn.Module):
-    """Maps an (x_i, y_i) pair to a representation r_i
-    
-    >> determinisitic path
-    Parameters
-    ----------
-    x_dim : int
-        Dimension of x values.
-    y_dim : int
-        Dimension of y values.
-    h_dim : int
-        Dimension of hidden layer.
-    r_dim : int
-        Dimension of output representation r.
     """
-    def __init__(self, x_dim, y_dim, h_dim, r_dim):
+    (x,y) --> aggregated representation r
+    """
+    def __init__(self, x_dim, y_dim, r_dim):
         super(DeterministicEncoder, self).__init__()
+ 
+        self.fc1 = nn.Linear(x_dim + y_dim, 8)
+        self.fc2 = nn.Linear(8, 16)
+        self.fc3 = nn.Linear(16, r_dim)
 
-        self.x_dim = x_dim
-        self.y_dim = y_dim
-        self.h_dim = h_dim
-        self.r_dim = r_dim
-
-        layers = [nn.Linear(x_dim + y_dim, h_dim),
-                  nn.ReLU(inplace=True),
-                  nn.Linear(h_dim, h_dim),
-                  nn.ReLU(inplace=True),
-                  nn.Linear(h_dim, r_dim)]
-
-        self.input_to_hidden = nn.Sequential(*layers)
-
+    def aggregate(self, r_i):
+        return torch.mean(r_i, dim=0)
+        
     def forward(self, x, y):
-        """
-        x : torch.Tensor
-            Shape (batch_size, x_dim)
-        y : torch.Tensor
-            Shape (batch_size, y_dim)
-        """
-        input_pairs = torch.cat((x, y), dim=1)
-        return self.input_to_hidden(input_pairs)
+        
+        x = x.squeeze(0)
+        y = y.squeeze(0)
+        r = torch.cat([x, y], dim=1)
+        
+        r = F.relu(self.fc1(r))
+        r = F.relu(self.fc2(r))
+        r = self.fc3(r)
 
+        # aggregate r
+        r_aggregated = self.aggregate(r)
+        
+        return r_aggregated
 
 class LatentEncoder(nn.Module):
     """
-    Maps (x, y) pairs into the mu and sigma parameters defining the normal
-    distribution of the latent variables z.
-    Parameters
-    ----------
-    x : torch.Tensor
-        Shape (batch_size, num_points, x_dim)
-    y : torch.Tensor
-        Shape (batch_size, num_points, y_dim)
+    aggregated representation --> latent variable z
     """
-    def __init__(self, r_dim, z_dim, h_dim, x_dim, y_dim):
+    def __init__(self, r_dim, z_dim):
         super(LatentEncoder, self).__init__()
-    
-        self.x_dim = x_dim
-        self.y_dim = y_dim
-        self.h_dim = h_dim
         self.r_dim = r_dim
         self.z_dim = z_dim
-
-        self.r_to_hidden = nn.Linear(r_dim, r_dim)
-        self.hidden_to_mu = nn.Linear(r_dim, z_dim)
-        self.hidden_to_sigma = nn.Linear(r_dim, z_dim)
-
-        self.deterministic_encoder = DeterministicEncoder(self.x_dim, self.y_dim, self.h_dim, self.r_dim)
-    def aggregate(self, r_i):
-        """
-        Aggregates representations for every (x_i, y_i) pair into a single
-        representation.
-        Parameters
-        ----------
-        r_i : torch.Tensor
-            Shape (batch_size, num_points, r_dim)
-        """
-        return torch.mean(r_i, dim=1)
+        self.fc_mu = nn.Linear(r_dim, z_dim)
+        self.fc_sigma = nn.Linear(r_dim, z_dim)
     
-    def forward(self, x, y):
-        """
-        r : torch.Tensor
-            Shape (batch_size, r_dim)
-        """
-        batch_size, num_points, _ = x.size()
-        # Flatten tensors, as encoder expects one dimensional inputs
-        x_flat = x.view(batch_size * num_points, self.x_dim)
-        y_flat = y.contiguous().view(batch_size * num_points, self.y_dim)
-        # Encode each point into a representation r_i
+    def forward(self, r):
+        # print('r shape:',r.shape)
+        # print('r_dim:', self.r_dim, 'z_dim:', self.z_dim)
+        # print('r->z dim fc mu shape:',self.fc_mu(r).shape)
         
-        r_i_flat = self.deterministic_encoder(x_flat, y_flat)
-        # Reshape tensors into batches
-        r_i = r_i_flat.view(batch_size, num_points, self.r_dim)
-        # Aggregate representations r_i into a single representation r
-        r = self.aggregate(r_i)
-                
-        hidden = torch.relu(self.r_to_hidden(r))
-        mu = self.hidden_to_mu(hidden)
-        # Define sigma following convention in "Empirical Evaluation of Neural
-        # Process Objectives" and "Attentive Neural Processes"
-        sigma = 0.1 + 0.9 * torch.sigmoid(self.hidden_to_sigma(hidden))
+        # print('fc sigma shape:',self.fc_sigma(r).shape)
+        # print('softplus shape:',F.softplus(self.fc_sigma(r)).shape)
+        mu, sigma = self.fc_mu(r), F.softplus(self.fc_sigma(r))
+        # print('[Latent Encoder] mu:', mu.shape, 'sigma:', sigma.shape)
         return mu, sigma
-        
-        
-        
         
 class Decoder(nn.Module):
     """
-    Decoder for maping [target_x] and latent [z] samples to [target_y]
+    target x and latent variable z --> posterior prediction p(f(x) | x,z)
     """
-    def __init__(self, input_dim, latent_dim, hidden_dim, output_dim):
+    def __init__(self, x_dim, y_dim, z_dim):
         super(Decoder, self).__init__()
-        self.input_dim = input_dim
-        self.latent_dim = latent_dim
-        self.hidden_dim = hidden_dim
-        self.output_dim = output_dim
         
-        layers = [nn.Linear(input_dim + latent_dim, hidden_dim),
-                  nn.ReLU(inplace=True),
-                  nn.Linear(hidden_dim, hidden_dim),
-                  nn.ReLU(inplace=True),
-                  nn.Linear(hidden_dim, hidden_dim),
-                  nn.ReLU(inplace=True)]
-
-        self.xz_to_hidden = nn.Sequential(*layers)
-        self.hidden_to_mu = nn.Linear(hidden_dim, output_dim)
-        self.hidden_to_sigma = nn.Linear(hidden_dim, output_dim)
+        self.fc1 = nn.Linear(x_dim + z_dim, 32)
+        self.fc2 = nn.Linear(32, 32)
+        self.fc3 = nn.Linear(32, 32)
         
-    def forward(self, target_x, z_sample):
+        self.fc_mu = nn.Linear(32, y_dim)
+        self.fc_sigma = nn.Linear(32, y_dim)
+    
+    def forward(self, x, z):
+        # Concatenate to a tensor of shape [len(x), len(z), x_dim + z_dim]
         '''
-        target_x: [batch_size, target_x_size, input_dim]
-        z_sample: [batch_size, latent_dim]
+        [1] x shape: torch.Size([784, 2])
+        [2] x shape: torch.Size([784, 10, 2])
+        [3] z shape: torch.Size([10, 5])
+        [4] z shape: torch.Size([784, 10, 5])
+        [5] y shape: torch.Size([784, 10, 7])
         '''
-        batch_size, num_points, _ = target_x.size()
-        # Repeat z, so it can be concatenated with every x. This changes shape
-        # from (batch_size, z_dim) to (batch_size, num_points, z_dim)
+        # num_target (24*24=784)
+        # number of z_samples (elbo_samples = z_dim*2)
         
-        z = z_sample.unsqueeze(1).repeat(1, num_points, 1)
+        # print('[1] orig x shape:', x.shape) # [batch_size, num_target, x_dim]
         
-        # Flatten x and z to fit with linear layer
-        x_flat = target_x.view(batch_size * num_points, self.input_dim)
-        z_flat = z.view(batch_size * num_points, self.latent_dim)
-        # Input is concatenation of z with every row of x
-        input_pairs = torch.cat((x_flat, z_flat), dim=1)
-        hidden = self.xz_to_hidden(input_pairs)
-        mu = self.hidden_to_mu(hidden)
-        pre_sigma = self.hidden_to_sigma(hidden)
-        # Reshape output into expected shape
-        mu = mu.view(batch_size, num_points, self.output_dim)
-        pre_sigma = pre_sigma.view(batch_size, num_points, self.output_dim)
-        # Define sigma following convention in "Empirical Evaluation of Neural
-        # Process Objectives" and "Attentive Neural Processes"
-        sigma = 0.1 + 0.9 * nn.functional.softplus(pre_sigma)
+        x = x.expand(z.shape[0], -1, -1).transpose(0, 1)
+        # print('[2] x shape:', x.shape) # [num_target, z_dim*2, x_dim]
+        # print('[3] orig z shape:',z.shape) # [z_dim*2, num_target]
         
-        # make distribution
-        loc = mu.squeeze()
-        scale = sigma.squeeze()
-        mvn_dist = torch.distributions.MultivariateNormal(loc, scale_tril=torch.diag(scale))
+        z = z.unsqueeze(0).expand(x.shape[0], -1, -1)
+        # print('[4] z shape:',z.shape) # [num_target, z_dim*2, num_target]
         
+        y = torch.cat([x, z], dim=-1)
+        # print('[4] y shape:', y.shape) # [num_target, z_dim*2, x_dim+num_target]
         
-        return mvn_dist, mu, sigma
+        y = F.relu(self.fc1(y))
+        y = F.relu(self.fc2(y))
+        y = F.relu(self.fc3(y))
+        
+        mu, sigma = self.fc_mu(y), F.softplus(self.fc_sigma(y))
+        dist = torch.distributions.Normal(mu, sigma)
+        
+        return dist, mu, sigma 

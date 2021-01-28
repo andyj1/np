@@ -184,12 +184,15 @@ def optimize_acqf(
     batch_candidates = torch.cat(batch_candidates_list)
     batch_acq_values = torch.cat(batch_acq_values_list)
 
+    # print(f'batch_candidates ({batch_candidates.shape})') # [num_targets, batch_size, x_dim]
+    # print(f'batch_acq_values ({batch_acq_values.shape})') # [num_targets]
     if post_processing_func is not None:
         batch_candidates = post_processing_func(batch_candidates)
 
     # exploitation
     if return_best_only:
         best = torch.argmax(batch_acq_values.view(-1), dim=0)
+        # print('best:',best)
         batch_candidates = batch_candidates[best]
         batch_acq_values = batch_acq_values[best]
 
@@ -273,6 +276,7 @@ def optimize_acqf_NP(
         >>> )
 
     """
+    
     if sequential and q > 1:
         if not return_best_only:
             raise NotImplementedError(
@@ -338,11 +342,9 @@ def optimize_acqf_NP(
     batch_candidates_list: List[Tensor] = []
     batch_acq_values_list: List[Tensor] = []
     start_idcs = list(range(0, num_restarts, batch_limit))
-    
     for start_idx in start_idcs:
         end_idx = min(start_idx + batch_limit, num_restarts)
         # optimize using random restart optimization
-        
         batch_candidates_curr, batch_acq_values_curr = gen_candidates_scipy(
             initial_conditions=batch_initial_conditions[start_idx:end_idx],
             acquisition_function=acq_function,
@@ -357,17 +359,29 @@ def optimize_acqf_NP(
             equality_constraints=equality_constraints,
             fixed_features=fixed_features,
         )
+        
         batch_candidates_list.append(batch_candidates_curr)
         batch_acq_values_list.append(batch_acq_values_curr)
         logger.info(f"Generated candidate batch {start_idx+1} of {len(start_idcs)}.")
+        # print('batch_candidates_curr:', len(batch_candidates_curr)) # [num_target]
+        # print('batch_acq_values_list:', len(batch_acq_values_curr)) # [num_target]
+        
+    # print('batch_candidates_list:', len(batch_candidates_list)) # [1]
+    # print('batch_acq_values_list:', len(batch_acq_values_list)) # [1]
+    
     batch_candidates = torch.cat(batch_candidates_list)
     batch_acq_values = torch.cat(batch_acq_values_list)
+    # print(f'batch_candidates ({batch_candidates.shape})') # [num_target, batch_size, in_dim]
+    # print(f'batch_acq_values ({batch_acq_values.shape})') # [num_target, z_dim*2, out_dim]
 
     if post_processing_func is not None:
         batch_candidates = post_processing_func(batch_candidates)
 
     if return_best_only:
+        # print(batch_acq_values.view(-1).shape)
         best = torch.argmax(batch_acq_values.view(-1), dim=0)
+        # best = int(best // 20)
+        # print('best:',best)
         batch_candidates = batch_candidates[best]
         batch_acq_values = batch_acq_values[best]
 

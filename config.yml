@@ -9,14 +9,15 @@ acquisition:        # by default, it uses multi-start optimization
   beta: 0.2         # the smaller value, the more exploitative acquisition function becomes (UCB)
   best_f: 0.1
 
-  num_restarts: 5  # number of starting points for multi-start acquisition function
-  raw_samples: 5   # number of samples for initialization
+  num_restarts: 10  # number of starting points for multi-start acquisition function
+  raw_samples: 10   # number of samples for initialization
 
 train:
-  num_iter: 10
-  num_epoch: 50
-  display_for_every: 10 # number of lines of training state results printed
-  num_samples: 50
+  lr: 0.0001 #0.01
+  num_iter: 100
+  num_epoch: 1000
+  display_for_every: 5 # number of lines of training state results printed
+  num_samples: 1000
 
 anp:
   input_dim: 3 # context_x: 2, context_y: 1
@@ -25,11 +26,10 @@ anp:
   # num_context:(empty) # must be ${train.num_samples} - ${acquisition.num_restarts or raw_samples}
 
 np:
-  input_dim: 2
-  output_dim: 1
-  repr_dim: 128
-  latent_dim: 128
-  hidden_dim: 128
+  input_dim: 2  # x
+  output_dim: 1 # y
+  repr_dim: 32  # r
+  latent_dim: 10 # z
   # num_context: (empty) # must be ${train.num_samples} - ${acquisition.num_restarts or raw_samples}
 
 MOM4:

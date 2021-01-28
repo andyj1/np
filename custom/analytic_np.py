@@ -119,7 +119,7 @@ class UpperConfidenceBound(AnalyticAcquisitionFunction):
         self.register_buffer("beta", beta)
 
     @t_batch_mode_transform(expected_q=1)
-    def forward(self, target_x: Tensor) -> Tensor:
+    def forward(self, target_x: Tensor): # -> Tensor:
         r"""Evaluate the Upper Confidence Bound on the candidate set 'target_x'.
 
         Args:
@@ -145,6 +145,7 @@ class UpperConfidenceBound(AnalyticAcquisitionFunction):
         
         mean = posterior.mean
         variance = posterior.variance
+        # print('mean:',mean.shape, 'variance:',variance.shape)
         
         delta = (self.beta.expand_as(mean) * variance).sqrt()
         if self.maximize:

@@ -1,0 +1,73 @@
+parsing took: 0.002 seconds
+Running on: CUDA
+[INFO] garbage collect, torch emptying cache...
+2021-01-28 10:24:01.528048: I tensorflow/stream_executor/platform/default/dso_loader.cc:48] Successfully opened dynamic library libcudart.so.10.1
+[INFO] loading regressor model took: 0.376 seconds
+[INFO] loading data from ./data/imputed_data.csv: took 0.702 seconds
+[INFO] initializing surrogate model: NP: took 3.053 seconds
+[INFO] train_epoch: 3333/10000,  loss: 3.4919228553771973 
+[INFO] train_epoch: 6666/10000,  loss: 3.7729132175445557 
+[INFO] train_epoch: 9999/10000,  loss: 3.5428035259246826 
+[INFO] initial train time: 70.452 sec
+  0%|                                                                                                                                                                                                                                                                                                                                                                                                                                | 0/100 [00:00<?, ?it/s]
+
+[INFO] candidate #1, PRE: tensor([[-39.4557,  56.8584]], device='cuda:0'), POST: [[-7.30354378 38.39794644]]
+[INFO] context size: 60740, Target size: 11
+[INFO] train_epoch: 3333/10000,  loss: 3.6788179874420166 
+[INFO] train_epoch: 6666/10000,  loss: 3.584779739379883 
+[INFO] train_epoch: 9999/10000,  loss: 4.078348636627197 
+iteration   1/100 / loss: 3.632,
+processing time: (total): 71.82217 sec,  dist: 69.207 -> 39.086 :   1%|███                                                                                                                                                                                                                                                                                                                | 1/100 [01:11<1:58:32, 71.84s/it]
+
+[INFO] candidate #2, PRE: tensor([[91.8205, 22.5888]], device='cuda:0'), POST: [[10.00640231 19.49085313]]
+[INFO] context size: 60740, Target size: 12
+[INFO] train_epoch: 3333/10000,  loss: 3.446859359741211 
+[INFO] train_epoch: 6666/10000,  loss: 3.7285056114196777 
+[INFO] train_epoch: 9999/10000,  loss: 3.5350632667541504 
+iteration   2/100 / loss: 3.359,
+processing time: (total): 75.29463 sec,  dist: 94.558 -> 21.909 :   2%|██████▏                                                                                                                                                                                                                                                                                                            | 2/100 [02:27<1:59:02, 72.88s/it]
+
+[INFO] candidate #3, PRE: tensor([[106.2957,  20.5498]], device='cuda:0'), POST: [[10.28932148 13.85417057]]
+[INFO] context size: 60740, Target size: 13
+[INFO] train_epoch: 3333/10000,  loss: 3.5982165336608887 
+[INFO] train_epoch: 6666/10000,  loss: 3.3768532276153564 
+[INFO] train_epoch: 9999/10000,  loss: 3.5675227642059326 
+iteration   3/100 / loss: 3.706,
+processing time: (total): 71.64228 sec,  dist: 108.264 -> 17.257 :   3%|█████████▏                                                                                                                                                                                                                                                                                                        | 3/100 [03:38<1:57:13, 72.51s/it]
+
+[INFO] candidate #4, PRE: tensor([[77.6777, 93.9751]], device='cuda:0'), POST: [[ 2.86951529 38.12911324]]
+[INFO] context size: 60740, Target size: 14
+[INFO] train_epoch: 3333/10000,  loss: 3.62640118598938 
+[INFO] train_epoch: 6666/10000,  loss: 3.7959821224212646 
+[INFO] train_epoch: 9999/10000,  loss: 3.6300716400146484 
+iteration   4/100 / loss: 3.693,
+processing time: (total): 71.25301 sec,  dist: 121.923 -> 38.237 :   4%|████████████▏                                                                                                                                                                                                                                                                                                     | 4/100 [04:50<1:55:24, 72.13s/it]
+
+[INFO] candidate #5, PRE: tensor([[ 39.7759, 125.4736]], device='cuda:0'), POST: [[ 7.09183038 42.49124198]]
+[INFO] context size: 60740, Target size: 15
+[INFO] train_epoch: 3333/10000,  loss: 3.661220073699951 
+[INFO] train_epoch: 6666/10000,  loss: 3.5410149097442627 
+[INFO] train_epoch: 9999/10000,  loss: 3.873440742492676 
+iteration   5/100 / loss: 3.787,
+processing time: (total): 71.44163 sec,  dist: 131.627 -> 43.079 :   5%|███████████████▎                                                                                                                                                                                                                                                                                                  | 5/100 [06:01<1:53:53, 71.93s/it]
+
+[INFO] candidate #6, PRE: tensor([[65.0183, 51.3485]], device='cuda:0'), POST: [[ 7.74670414 35.2689432 ]]
+[INFO] context size: 60740, Target size: 16
+[INFO] train_epoch: 3333/10000,  loss: 3.729581594467163 
+[INFO] train_epoch: 6666/10000,  loss: 3.8150627613067627 
+[INFO] train_epoch: 9999/10000,  loss: 3.52282452583313 
+iteration   6/100 / loss: 3.717,
+processing time: (total): 71.39972 sec,  dist: 82.850 -> 36.110 :   6%|██████████████████▍                                                                                                                                                                                                                                                                                                | 6/100 [07:12<1:52:26, 71.77s/it]
+
+[INFO] candidate #7, PRE: tensor([[53.3992, 22.8303]], device='cuda:0'), POST: [[ 7.74670414 18.4941203 ]]
+[INFO] context size: 60740, Target size: 17
+[INFO] train_epoch: 3333/10000,  loss: 3.6240041255950928 
+[INFO] train_epoch: 6666/10000,  loss: 3.545779228210449 
+[INFO] train_epoch: 9999/10000,  loss: nan 
+iteration   7/100 / loss: nan,
+processing time: (total): 72.87480 sec,  dist: 58.075 -> 20.051 :   7%|█████████████████████▋                                                                                                                                                                                                                                                                                               | 7/100 [08:25<1:51:45, 72.10s/it]
+
+[INFO] candidate #8, PRE: tensor([[-16.3155, -65.6442]], device='cuda:0'), POST: [[ -8.84340477 -16.2314304 ]]
+[INFO] context size: 60740, Target size: 18
+[INFO] train_epoch: 3333/10000,  loss: nan 
+[INFO] train_epoch: 6666/10000,  loss: nan 

@@ -155,7 +155,7 @@ def fit_gpytorch_torch(
         **_filter_kwargs(ExpMAStoppingCriterion, **optim_options)
     )
     
-    train_inputs, train_targets = mll.model.train_inputs, mll.model.train_targets
+    train_inputs, train_targets = mll.model.train_inputs, mll.model.train_targets           
     while not stop:
         optimizer.zero_grad()
         with gpt_settings.fast_computations(log_prob=approx_mll):
@@ -167,9 +167,7 @@ def fit_gpytorch_torch(
         loss_trajectory.append(loss.item())
         for name, param in mll.named_parameters():
             param_trajectory[name].append(param.detach().clone())
-        if optim_options["disp"] and (
-            (i + 1) % DISPLAY_FOR_EVERY == 0 or i == (optim_options["maxiter"] - 1)
-        ):
+        if optim_options["disp"] and ((i + 1) % (optim_options['maxiter']//DISPLAY_FOR_EVERY) == 0):# or i == (optim_options["maxiter"] - 1)):
             print(f"\tTrain Epoch: {i + 1:>3}/{optim_options['maxiter']} / Loss: {loss.item():>4.3f}")
         if track_iterations:
             iterations.append(OptimizationIteration(i, loss.item(), time.time() - t1))
