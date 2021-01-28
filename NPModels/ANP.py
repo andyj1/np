@@ -1,28 +1,28 @@
 #!/usr/bin/env python3
 
 # reference: https://github.com/soobinseo/Attentive-Neural-Process
+#            https://github.com/MIT-Omnipush/omnipush-metalearning-baselines
 
 import torch
 import torch.nn as nn
 import utils.np_utils as np_utils
 from botorch.posteriors.posterior import Posterior
-from utils.anp_modules import Decoder, DeterministicEncoder, LatentEncoder
+from NPModels.anp_modules import Decoder, DeterministicEncoder, LatentEncoder
 from utils.utils import KLD_gaussian
-
 
 class ANP(nn.Module):
     def __init__(self, cfg):
         super(ANP, self).__init__()
         num_hidden = cfg['anp']['hidden_dim'] # for encoder and decoder hidden layers
         input_dim = cfg['anp']['input_dim']
-        out_dim = cfg['anp']['output_dim']
+        output_dim = cfg['anp']['output_dim']
         
-        self.latent_encoder = LatentEncoder(num_hidden, num_hidden, input_dim=input_dim)    # for z
-        self.deterministic_encoder = DeterministicEncoder(num_hidden, num_hidden)   # for r
+        self.latent_encoder = LatentEncoder(num_hidden, num_hidden, input_dim=input_dim, output_dim=output_dim)
+        self.deterministic_encoder = DeterministicEncoder(num_hidden, num_hidden, input_dim=input_dim, output_dim=output_dim)
         self.decoder = Decoder(num_hidden)
         self.BCELoss = nn.BCELoss()
         
-        self.num_outputs = out_dim
+        self.num_outputs = output_dim
         
         self.r = None
         self.z = None
@@ -65,33 +65,30 @@ class ANP(nn.Module):
         # prediction of target y given r, z, target_x
         dist, mu, sigma = self.decoder(r, z, target_x)
         
-        # For Training
+        # For training
         if target_y is not None:
-            log_p = dist.log_prob(target_y)
-            posterior = self.latent_encoder(target_x, target_y)
             
             # get log probability
-            # mu /= 1000
-            # target_y /= 1000
-            
-            # print('BCELOSS INPUT:',mu, torch.sigmoid(mu), target_y)
-            bce_loss = self.BCELoss(torch.sigmoid(mu), target_y)
+            log_p = torch.mean(dist.log_prob(target_y))
+            posterior = self.latent_encoder(target_x, target_y)
+            # log_p = -self.BCELoss(torch.sigmoid(mu), target_y)
             
             # get KL divergence between prior and posterior
-            # kl_div = (torch.exp(posterior_var) + (posterior_mu - prior_mu) ** 2) / torch.exp(prior_var) - 1. + (prior_var - posterior_var)
-            # kl = 0.5 * kl_div.sum()
+            kl_div = (torch.exp(posterior_var) + (posterior_mu - prior_mu) ** 2) / torch.exp(prior_var) - 1. + (prior_var - posterior_var)
+            kl = 0.5 * kl_div.sum() # modified in https://github.com/MIT-Omnipush/omnipush-metalearning-baselines to reduce mean()
             
             # the following gives runtime error
-            p = torch.distributions.normal.Normal(loc=prior_mu, scale=prior_var)
-            q = torch.distributions.normal.Normal(loc=posterior_mu, scale=posterior_var)   
-            kl = KLD_gaussian(q, p).mean(dim=0).sum()
+            # p = torch.distributions.normal.Normal(loc=prior_mu, scale=prior_var)
+            # q = torch.distributions.normal.Normal(loc=posterior_mu, scale=posterior_var)   
+            # kl = KLD_gaussian(q, p).mean(dim=0).sum()
             
             # maximize prob and minimize KL divergence
-            print('BCE:',bce_loss.item())
-            print('KLD:',kl.item())
-            loss = bce_loss + kl
+            
+            # print('KLD:',kl.item())
+            
+            loss = -log_p + kl
         
-        # For Generation
+        # For testing
         else:
             log_p = None
             kl = None
@@ -102,7 +99,6 @@ class ANP(nn.Module):
         self.z = z
         
         return mu, sigma, log_p, kl, loss
-    
     
     # posterior generation assuming context x and y already formed r and z
     # returns single-output mvn Posterior class

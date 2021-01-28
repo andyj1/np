@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import utils.np_utils as np_utils
 from torch.nn import functional as F
-from utils.np_modules import Decoder, DeterministicEncoder, LatentEncoder
+from NPModels.np_modules import Decoder, DeterministicEncoder, LatentEncoder
 
 class NP(nn.Module):
     def __init__(self, cfg):
@@ -68,7 +68,7 @@ class NP(nn.Module):
             dist_target, mu_target, sigma_target = self.decoder(x_target, z_sample)
             log_p = np_utils.log_likelihood(mu_target, sigma_target, y_target)
             
-            print('kl:',kl, 'log_p:',log_p)
+            # print('kl:',kl, 'log_p:',log_p)
             
             loss = log_p - kl
         '''

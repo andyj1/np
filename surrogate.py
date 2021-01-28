@@ -163,13 +163,14 @@ class SurrogateModel(object):
             # self.writer.add_scalar(f"Loss/train_NP_{cfg['train']['num_samples']}_samples_fitNP", loss.item(), train_epoch)
             
             loss += -loss_val
+            loss = loss.mean()
             # backprop
             # training_loss = loss.item()
             
-            loss.mean().backward()
+            loss.backward()
             optimizer.step()
             if (train_epoch+1) % (self.epochs//self.DISPLAY_FOR_EVERY) == 0:
-                print('[INFO] train_epoch: {}/{}, \033[94m loss: {} \033[0m'.format(train_epoch+1, self.epochs, loss.mean().item()))
+                print('[INFO] train_epoch: {}/{}, \033[94m loss: {} \033[0m'.format(train_epoch+1, self.epochs, loss.item()))
         
         
         save_ckpt(self.model, self.optimizer, toy_bool, True, chip, iter)

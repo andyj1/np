@@ -120,6 +120,3 @@ make numpy array into pandas series
 '''
 def make_pd_series(nparray: np.array, name: str):
     return pd.Series(nparray, dtype=float, name=name)
-
-def namestr(obj, namespace):
-    return [name for name in namespace if namespace[name] is obj]
