@@ -1,0 +1,16 @@
+candidates_input_dist -->         98.3582  +/- 56.2569
+candidates_output_dist -->        27.5522  +/- 14.4241
+initial_input_dists -->           138.7853  +/- 59.4190
+initial_output_dists -->          50.9798  +/- 24.0519
+random_samples_input_dist -->     135.2823  +/- 60.3467
+random_samples_output_dist -->    39.7543  +/- 23.7094
+
+
+
+NP=== summary ===
+candidates_input_dist -->         93.2982  +/- 43.3771
+candidates_output_dist -->        30.9009  +/- 13.7888
+initial_input_dists -->           138.7853  +/- 59.4190
+initial_output_dists -->          50.9798  +/- 24.0519
+random_samples_input_dist -->     110.6241  +/- 53.4519
+random_samples_output_dist -->    33.7408  +/- 19.6648

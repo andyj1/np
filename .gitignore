@@ -1,10 +1,14 @@
 # omit data files (csv)
 data/*.csv
-RFRegressor/models/*.pkl
+reflow_oven/models/*.pkl
 
 # omit pickles
 data_analysis/*.pkl
 data_analysis/*.p
+
+runs/*
+NPModels/ref_*
+NPModels/ref_*
 
 # omit checkpoints
 *.pt

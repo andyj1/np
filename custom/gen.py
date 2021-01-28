@@ -109,12 +109,14 @@ def gen_candidates_scipy(
             .requires_grad_(True)
         )
         X_fix = fix_features(X=X, fixed_features=fixed_features)
+        
         loss = -acquisition_function(X_fix).sum()
+        
         # compute gradient w.r.t. the inputs (does not accumulate in leaves)
         gradf = _arrayify(torch.autograd.grad(loss, X)[0].contiguous().view(-1))
         fval = loss.item()
         return fval, gradf
-
+    
     res = minimize(
         f,
         x0,
@@ -124,17 +126,25 @@ def gen_candidates_scipy(
         constraints=constraints,
         options={k: v for k, v in options.items() if k != "method"},
     )
+    
     candidates = fix_features(
         X=torch.from_numpy(res.x).to(initial_conditions).view(shapeX).contiguous(),
         fixed_features=fixed_features,
     )
+        
     clamped_candidates = columnwise_clamp(
         X=candidates, lower=lower_bounds, upper=upper_bounds, raise_on_violation=True
     )
+    
     with torch.no_grad():
         batch_acquisition = acquisition_function(clamped_candidates)
+    # print('candidate shape:',clamped_candidates.shape)
+    # print('minimize result:',res)
+    # print('candidates:',candidates.shape)
+    # print('='*10, clamped_candidates)
+    # import sys
+    # sys.exit(0)
     return clamped_candidates, batch_acquisition
-
 
 def gen_candidates_torch(
     initial_conditions: Tensor,

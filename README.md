@@ -11,8 +11,8 @@
 
 ## Bayesian Optimization
 #### Surrogate Model
-- BoTorch (GPyTorch)-based Bayesian Optimization GPR surrogate model
-- Neural Process surrogate model
+- BoTorch (GPyTorch)-based Gaussian Process
+- Neural Process (variations)
 
 #### Acquisition Function
 - UpperConfidenceBound
@@ -24,14 +24,14 @@
 2. *multirf.py* prepares models for reflow oven simulation (under *reflow_oven*)
 3. *main.py* runs the process // modify config.yml for parameters
 (or, just run `make` in a shell)
-4. *config.yml" contains configuration parameters
+4. *config.yml* contains configuration parameters
 5. */ckpts* contains checkpoints for training SingleTaskGP model
 
 > ```python
-> python main.py # run with MOM4 data
-> python main.py --toy # run with toy data
-> python main.py --toy --load PATH # load model and optimizer from checkpoints
+> python main.py        # run with MOM4 data
+> python main.py --toy  # run GP model with toy data
+> python main.py --toy --model [anp|np] --load PATH/TO/CKPT_PT
 > ```
 
-## Contribution
-## License
+<!-- ## Contribution
+## License -->

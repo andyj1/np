@@ -64,7 +64,8 @@ def fit_gpytorch_torch(
     track_iterations: bool = True,
     approx_mll: bool = True,
     custom_optimizer: Optional[Optimizer] = None,
-    device = None
+    device = None,
+    display_for_every = 1
 ) -> Tuple[MarginalLogLikelihood, Dict[str, Union[float, List[OptimizationIteration]]]]:
     r"""Fit a gpytorch model by maximizing MLL with a torch optimizer.
 
@@ -109,7 +110,7 @@ def fit_gpytorch_torch(
     optim_options = {"maxiter": 100, "disp": True, "lr": 0.05}
     optim_options.update(options or {})
     exclude = optim_options.pop("exclude", None)
-    DISPLAY_FOR_EVERY = optim_options["maxiter"] // 5
+    DISPLAY_FOR_EVERY = display_for_every if display_for_every != 1 else optim_options["maxiter"] // 5 if optim_options["maxiter"]>5 else 1
     if exclude is not None:
         mll_params = [
             t for p_name, t in mll.named_parameters() if p_name not in exclude
@@ -154,7 +155,7 @@ def fit_gpytorch_torch(
         **_filter_kwargs(ExpMAStoppingCriterion, **optim_options)
     )
     
-    train_inputs, train_targets = mll.model.train_inputs, mll.model.train_targets
+    train_inputs, train_targets = mll.model.train_inputs, mll.model.train_targets           
     while not stop:
         optimizer.zero_grad()
         with gpt_settings.fast_computations(log_prob=approx_mll):
@@ -166,9 +167,7 @@ def fit_gpytorch_torch(
         loss_trajectory.append(loss.item())
         for name, param in mll.named_parameters():
             param_trajectory[name].append(param.detach().clone())
-        if optim_options["disp"] and (
-            (i + 1) % DISPLAY_FOR_EVERY == 0 or i == (optim_options["maxiter"] - 1)
-        ):
+        if optim_options["disp"] and ((i + 1) % (optim_options['maxiter']//DISPLAY_FOR_EVERY) == 0):# or i == (optim_options["maxiter"] - 1)):
             print(f"\tTrain Epoch: {i + 1:>3}/{optim_options['maxiter']} / Loss: {loss.item():>4.3f}")
         if track_iterations:
             iterations.append(OptimizationIteration(i, loss.item(), time.time() - t1))
