@@ -8,6 +8,7 @@ import sys
 
 class Linear(nn.Module):
     """
+    from: https://github.com/MIT-Omnipush/omnipush-metalearning-baselines
     Linear Module
     """
     def __init__(self, in_dim, out_dim, bias=True, w_init='linear'):
@@ -31,9 +32,9 @@ class LatentEncoder(nn.Module):
     """
     Latent Encoder [For prior, posterior]
     """
-    def __init__(self, num_hidden, num_latent, input_dim):
+    def __init__(self, num_hidden, num_latent, input_dim, output_dim):
         super(LatentEncoder, self).__init__()
-        self.input_projection = Linear(input_dim, num_hidden)
+        self.input_projection = Linear(input_dim+output_dim, num_hidden)
         self.self_attentions = nn.ModuleList([Attention(num_hidden) for _ in range(2)])
         self.penultimate_layer = Linear(num_hidden, num_hidden, w_init='relu')
         self.mu = Linear(num_hidden, num_latent)
@@ -65,7 +66,7 @@ class LatentEncoder(nn.Module):
         log_sigma = self.log_sigma(hidden)
         
         # reparameterization trick
-        std = torch.exp(0.5 * log_sigma)
+        std = 0.1 + 0.9 * torch.sigmoid(log_sigma) # changed according to the original deepmind version
         eps = torch.randn_like(std)
         z = eps.mul(std).add_(mu)
         
@@ -78,11 +79,12 @@ class DeterministicEncoder(nn.Module):
     """
     Deterministic Encoder [r]
     """
-    def __init__(self, num_hidden, num_latent, input_dim=3):
+    def __init__(self, num_hidden, num_latent, input_dim=2, output_dim=1):
         super(DeterministicEncoder, self).__init__()
         self.self_attentions = nn.ModuleList([Attention(num_hidden) for _ in range(2)])
         self.cross_attentions = nn.ModuleList([Attention(num_hidden) for _ in range(2)])
-        self.input_projection = Linear(input_dim, num_hidden)
+        
+        self.input_projection = Linear(input_dim+output_dim, num_hidden)
         self.context_projection = Linear(2, num_hidden)
         self.target_projection = Linear(2, num_hidden)
 
@@ -111,11 +113,14 @@ class Decoder(nn.Module):
     """
     Decoder for generation 
     """
-    def __init__(self, num_hidden):
+    def __init__(self, num_hidden, input_dim=2, output_dim=1):
         super(Decoder, self).__init__()
-        self.target_projection = Linear(2, num_hidden)
+        
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.target_projection = Linear(input_dim, num_hidden)
         self.linears = nn.ModuleList([Linear(num_hidden * 3, num_hidden * 3, w_init='relu') for _ in range(3)])
-        self.final_projection = Linear(num_hidden * 3, 2)
+        self.final_projection = Linear(num_hidden * 3, 2*output_dim)
         
     def forward(self, r, z, target_x):
         batch_size, num_targets, _ = target_x.size()
@@ -138,7 +143,9 @@ class Decoder(nn.Module):
         # reshape for MultivariateNormal distribution
         loc = mu.squeeze()
         scale = sigma.squeeze()
-        mvn_dist = torch.distributions.MultivariateNormal(loc, scale_tril=torch.diag(scale))
+        
+        mvn_dist = torch.distributions.Normal(loc=loc, scale=torch.exp(scale))
+        # mvn_dist = torch.distributions.MultivariateNormal(loc, scale_tril=torch.diag(scale))
         
         return mvn_dist, mu, sigma
 
