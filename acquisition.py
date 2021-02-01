@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-
-
-import numpy as np
+'''
+current acquisition functions support only q=1 (single-outcome case)
+for multi-objective, there are multi-objective acquisition functions available,
+given the surrogate model can output multi-outcome (for multi-output objective)
+'''
 import torch
 from botorch.acquisition import qExpectedImprovement
 # from botorch.acquisition.acquisition import AcquisitionFunction
-from custom.analytic import (ExpectedImprovement, UpperConfidenceBound)
-# from custom.analytic_np import (ExpectedImprovement, UpperConfidenceBound) # NP version
+
 from botorch.sampling import IIDNormalSampler, SobolQMCNormalSampler
 
-from custom.optimize import optimize_acqf
-
 class Acquisition(object):
-    def __init__(self, cfg, model, device, beta=None, best_f=None):
+    def __init__(self, cfg, model, device, beta=None, best_f=None, model_type='GP'):
         cfg_acq = cfg['acquisition']
         
         option = cfg_acq['option']
@@ -20,7 +19,7 @@ class Acquisition(object):
         self.best_f = 0 if best_f is None else cfg_acq['best_f']
         self.q = cfg_acq['q']
         self.num_restarts = cfg_acq['num_restarts']
-        self.raw_samples = cfg_acq['raw_samples']
+        self.raw_samples = cfg_acq['raw_samples'] # init: same as number of target samples (train_num_samples - np_num_context); need to adjust this at every iteration
         self.candidate = None
         self.acq_value = None
         
@@ -29,6 +28,13 @@ class Acquisition(object):
         bound_limit = cfg_acq['bounds']
         self.bounds = torch.stack([-torch.ones(dim, device=device) * bound_limit, torch.ones(dim, device=device) * bound_limit])
         
+        if 'ANP' in model_type:
+            from custom.analytic_anp import (UpperConfidenceBound)
+        elif 'NP' in model_type:
+            from custom.analytic_np import (UpperConfidenceBound)
+        elif 'GP' in model_type:
+            from custom.analytic_gp import (ExpectedImprovement, UpperConfidenceBound)
+
         if option == 1:
             # 1. UCF
             self.acq_fcn = UpperConfidenceBound(model, beta=self.beta, maximize=False)
@@ -37,7 +43,7 @@ class Acquisition(object):
             self.acq_fcn = ExpectedImprovement(model, best_f=self.best_f, maximize=False)
         elif option == 3:
             # 3. Sobol Quasi-Monte Carlo Normal sampler-based qEI 
-            sampler = SobolQMCNormalSampler(num_samples=100, seed=0, resample=False)        
+            sampler = SobolQMCNormalSampler(num_samples=100, seed=0, resample=False)
             self.acq_fcn = qExpectedImprovement(
                 model, best_f=self.best_f, sampler=sampler, maximize=False
             )
@@ -48,39 +54,30 @@ class Acquisition(object):
                 # set best_f to train_Y.max()
                 model, best_f=self.best_f, sampler=sampler, maximize=False
             )
-        
-    # for GP
-    def optimize(self):
-        # if sequential is kept turned off, it performs the following
-        # 1. generate initial candidates
-        # 2. get candidates from scipy.optimize.minimize or torch.optim
-        candidate, acq_value = optimize_acqf(self.acq_fcn, 
-                                            bounds=self.bounds, 
-                                            q=self.q, 
-                                            num_restarts=self.num_restarts, 
-                                            raw_samples=self.raw_samples)
+
+    def optimize(self, np=False):
+        # for GP
+        if np == False:
+            from custom.optimize import optimize_acqf
+            # if sequential is kept turned off, it performs the following
+            # 1. generate initial candidates
+            # 2. get candidates from scipy.optimize.minimize or torch.optim
+            candidate, acq_value = optimize_acqf(self.acq_fcn, 
+                                                bounds=self.bounds, 
+                                                q=self.q, 
+                                                num_restarts=self.num_restarts, 
+                                                raw_samples=self.raw_samples)
+        # for NP
+        else:
+            from custom.optimize import optimize_acqf_NP
+            candidate, acq_value = optimize_acqf_NP(self.acq_fcn, 
+                                                    bounds=self.bounds, 
+                                                    q=self.q, 
+                                                    num_restarts=self.num_restarts, 
+                                                    raw_samples=self.raw_samples)
+            
+            # print(f'[INFO] \033[91m raw samples: {self.raw_samples}, num_restarts: {self.num_restarts} \033[0m')
         return candidate, acq_value
 
-    # for NP
-    # probability of improvement acquisition function
-    def acquisition(X, Xsamples, model):
-        # calculate the best surrogate score found so far
-        yhat, _ = model(X) # forward pass prediction
-        best = max(yhat)
-        # calculate mean and stdev via surrogate function
-        mu, std = surrogate(model, Xsamples)
-        mu = mu[:, 0]
-        # calculate the probability of improvement
-        probs = norm.cdf((mu - best) / (std+1E-9))
-        return probs
 
-    # optimize the acquisition function
-    def opt_acquisition(X, y, model):
-        # random search, generate random samples
-        Xsamples = random(100)
-        Xsamples = Xsamples.reshape(len(Xsamples), 1)
-        # calculate the acquisition function for each sample
-        scores = acquisition(X, Xsamples, model)
-        # locate the index of the largest scores
-        ix = np.argmax(scores)
-        return Xsamples[ix, 0]
+

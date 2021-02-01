@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 
+import time
+
 import joblib
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch
+
 from utils.utils import reflow_oven
 
 pd.set_option('display.max_columns', None)
 
 # pandas dataframe to flattened tensor shape
-def flatten(df) -> torch.FloatTensor:
+def flatten(df): # -> torch.FloatTensor
     return torch.FloatTensor(df.to_numpy().reshape(-1,df.shape[1]))
 
 '''
@@ -17,6 +20,7 @@ getTOYdata(): generates a set of PRE data,
               and then passes through reflow oven to get POST data
 '''
 def getTOYdata(cfg, model):
+    start_time = time.time()
     # config
     mu = cfg['toy']['mu']
     sigma = cfg['toy']['sigma']
@@ -28,12 +32,16 @@ def getTOYdata(cfg, model):
     # reflow oven simulation 
     outputs = reflow_oven(inputs, model)
 
+    end_time = time.time()
+    print(': took %.3f seconds' % (end_time-start_time))
     return inputs, outputs
 
 '''
 getMOM4data: returns lists of variables from random samples (count: num_samples)
 '''
 def getMOM4data(cfg, data_path='./data/imputed_data.csv'):
+    start_time = time.time()
+    
     MOM4dict = cfg['MOM4']
     input_var = MOM4dict['input_var']
     output_var = MOM4dict['output_var']
@@ -55,10 +63,13 @@ def getMOM4data(cfg, data_path='./data/imputed_data.csv'):
     outputs = flatten(sampled_chip_df[output_var])
     
     assert len(inputs) == len(outputs)
+    
+    end_time = time.time()
+    print(': took %.3f seconds' % (end_time-start_time))
     return inputs, outputs
 
 '''
-getMOM4chipdata: retrieves dataframe for the particular chip or all chips ('chiptype)
+getMOM4chipdata: retrieves dataframe for the particular chip or all chips ('chiptype')
 '''
 def getMOM4chipdata(cfg, data_path):
     # config

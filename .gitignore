@@ -1,9 +1,19 @@
 # omit files
 data/*.csv
+<<<<<<< HEAD
 reflow_oven//models/*.pkl
+=======
+reflow_oven/models/*.pkl
+
+# omit pickles
+>>>>>>> b9ffd6f8ce1b844db174904ed7058b27f5587475
 data_analysis/*.pkl
 data_analysis/*.p
 todo.md
+
+runs/*
+NPModels/ref_*/*
+NPModels/ref_*/*
 
 # omit checkpoints
 *.pt
