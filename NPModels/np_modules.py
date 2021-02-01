@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
+from utils.utils import checkParamIsSentToCuda
 
 import torch
 import torch.nn as nn
@@ -47,7 +48,7 @@ class DeterministicEncoder(nn.Module):
         x = x.squeeze(0)
         y = y.squeeze(0)
         r = torch.cat([x, y], dim=1)
-        
+    
         r = F.relu(self.fc1(r))
         r = F.relu(self.fc2(r))
         r = self.fc3(r)

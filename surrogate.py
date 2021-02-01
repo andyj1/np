@@ -3,6 +3,7 @@
 import random
 import sys
 import time
+from utils.utils import checkParamIsSentToCuda
 
 import numpy as np
 import torch
@@ -21,7 +22,7 @@ from NPModels.NP import NP as NeuralProcesses
 from utils.np_utils import random_split_context_target
 
 
-def save_ckpt(model, optimizer, toy_bool, np_bool, chip, iter):
+def save_ckpt(model, optimizer, np_bool, chip, iter):
     checkpoint = {'state_dict': model.state_dict(),
                     'optimizer' : optimizer.state_dict()}
     base_path = f'ckpts/'
@@ -42,27 +43,27 @@ class SurrogateModel(object):
         
         self.epochs = epochs
         self.model_type = model_type
-        if self.model_type == 'NP':
-            self.model = NeuralProcesses(cfg).to(device)
-        elif self.model_type == 'ANP':
-            self.model = AttentiveNeuralProcesses(cfg).to(device)
-        elif self.model_type == 'GP':
-            self.model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
-            self.model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
-            mll = ExactMarginalLogLikelihood(likelihood=self.model.likelihood, model=self.model)
-            mll.to(train_X)
         
-        self.DISPLAY_FOR_EVERY = cfg['train']['display_for_every']
-        # optimizer_cls = optim.AdamW
-        # optimizer_cls = optim.SparseAdam # doesn't support dense gradients
-        # self.optimizer_cls = optim.Adamax
-        self.optimizer_cls = optim.Adam
-        self.optimizer = self.optimizer_cls(self.model.parameters())
+        # configure optimizer
+        self.lr = cfg['train']['lr']
+        self.optimizer = self.optimizer_cls(self.model.parameters(), lr=self.lr)
         
         # use GPU if available
         self.device = device
         self.dtype = torch.float
         self.writer = writer
+
+        self.model, mll = self.initialize_model(cfg, self.model_type, train_X, train_Y).to(self.device)
+        
+        self.DISPLAY_FOR_EVERY = cfg['train']['display_for_every']
+        if cfg['train']['optimizer'] == 'Adam':
+            self.optimizer_cls = optim.Adam
+        elif cfg['train']['optimizer'] == 'SGD':
+            self.optimizer_cls = optim.SGD
+        # optimizer_cls = optim.AdamW
+        # optimizer_cls = optim.SparseAdam # doesn't support dense gradients
+        # self.optimizer_cls = optim.Adamax
+        
 
         end_time = time.time()
         print(': took %.3f seconds' % (end_time-start_time))
@@ -71,14 +72,8 @@ class SurrogateModel(object):
     def fitGP(self, train_X, train_Y, cfg, toy_bool=False, iter=0):
         chip = cfg['MOM4']['parttype']
         
-        # re-initialize model because GPyTorch's SingleTaskGP taks in X, Y at the initialization
-        model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
-        model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
-        model.to(self.device)
-        mll = ExactMarginalLogLikelihood(likelihood=model.likelihood, model=model)
-        mll.to(train_X)     # set to default data type
-        mll.to(self.device) # upload to GPU
-
+        self.model, mll = self.initialize_model(cfg, self.model_type, train_X, train_Y).to(self.device)
+        
         # default wrapper tor training
         # fit_gpytorch_model(mll)
         mll.train()
@@ -127,29 +122,28 @@ class SurrogateModel(object):
             self.optimizer.step()
         '''
         # syntax: save_ckpt(model, optimizer, toy_bool, np_bool, chip, iter)
-        save_ckpt(self.model, self.optimizer, toy_bool, False, chip, iter)
+        save_ckpt(self.model, self.optimizer, False, chip, iter)
         return info_dict
     
     def fitNP(self, train_X, train_Y, cfg, toy_bool=False, iter=0):
         chip = cfg['MOM4']['parttype']
         info_dict = {}
-        # not re-initializing the model (already defined at self.model)
-        self.model.train()
-        lr = cfg['train']['lr']
-        optimizer = optim.Adam(self.model.parameters(), lr=lr)
-
-        num_context = cfg[self.model_type.lower()]['num_context']
         
-                
+        # re-initialize a new model to train
+        self.model = self.initialize_model(cfg, self.model_type, train_X, train_Y).to(self.device)
+            
+        # set to train mode
+        self.model.train()
+            
+        epoch_loss = 0.0    
+        num_context = cfg[self.model_type.lower()]['num_context']
         for train_epoch in range(self.epochs):
-            loss = 0.0
+            epoch_loss = 0.0
+            self.adjust_learning_rate(init_lr=self.lr, optimizer=self.optimizer, step_num=train_epoch+1)
+            self.optimizer.zero_grad()
             
-            self.adjust_learning_rate(optimizer, train_epoch+1)
-            
-            optimizer.zero_grad()
             # split into context and target
             x_context, y_context, x_target, y_target = random_split_context_target(train_X, train_Y, num_context)
-
             # print(f'[INFO] x_context: {x_context.shape}, y_context:{y_context.shape}, x_target:{x_target.shape}, y_target:{y_target.shape}')
             
             # send to gpu
@@ -159,40 +153,39 @@ class SurrogateModel(object):
             y_target = y_target.to(self.device)
 
             # forward pass
-            mu, sigma, log_p, kl, loss_val = self.model(x_context, y_context, x_target, y_target)
+            mu, sigma, log_p, kl, loss = self.model(x_context, y_context, x_target, y_target)
             # self.writer.add_scalar(f"Loss/train_NP_{cfg['train']['num_samples']}_samples_fitNP", loss.item(), train_epoch)
             
-            loss += -loss_val
-            loss = loss.mean()
-            # backprop
-            # training_loss = loss.item()
+            epoch_loss += -loss
+            epoch_loss = epoch_loss.mean()
+            epoch_loss.backward(retain_graph=True)
+            self.optimizer.step()
             
-            loss.backward()
-            optimizer.step()
             if (train_epoch+1) % (self.epochs//self.DISPLAY_FOR_EVERY) == 0:
-                print('[INFO] train_epoch: {}/{}, \033[94m loss: {} \033[0m'.format(train_epoch+1, self.epochs, loss.item()))
+                print('[INFO] train_epoch: {}/{}, \033[94m loss: {} \033[0m'.format(train_epoch+1, self.epochs, epoch_loss.item()))
         
         
-        save_ckpt(self.model, self.optimizer, toy_bool, True, chip, iter)
+        save_ckpt(self.model, self.optimizer, True, chip, iter)
 
-        info_dict['fopt'] = loss.mean().item()
+        info_dict['fopt'] = epoch_loss.item()
         return info_dict
-
-    # '''
-    # evaluate: performs evaluation at test points and return mean and lower, upper bounds
-    # '''
-    # def evaluate(self, test_X):
-    #     posterior, variance = None, None
-    #     if self.model is not None:
-    #         self.model.eval() # set eval mode
-    #         with torch.no_grad():
-    #             posterior = self.model.posterior(test_X)
-    #             # upper and lower confidence bounds (2 standard deviations from the mean)
-    #             lower, upper = posterior.mvn.confidence_region()
-    #         return posterior.mean.cpu().numpy(), (lower.cpu().numpy(), upper.cpu().numpy())
-
     
-    def adjust_learning_rate(self, optimizer, step_num, warmup_step=4000):
-        lr = 0.001 * warmup_step**0.5 * min(step_num * warmup_step**-1.5, step_num**-0.5)
+    def adjust_learning_rate(self, init_lr, optimizer, step_num, warmup_step=4000):
+        lr = init_lr * warmup_step**0.5 * min(step_num * warmup_step**-1.5, step_num**-0.5)
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
+    
+    def initialize_model(self, cfg, model_type, train_X, train_Y):
+        model = None
+        mll = None
+        if model_type == 'NP':
+            model = NeuralProcesses(cfg)
+        elif model_type == 'ANP':
+            model = AttentiveNeuralProcesses(cfg)
+        elif self.model_type == 'GP':
+            self.model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
+            self.model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
+            mll = ExactMarginalLogLikelihood(likelihood=self.model.likelihood, model=self.model)
+            mll.to(train_X)
+        
+        return model, mll

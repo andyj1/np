@@ -18,7 +18,7 @@ from acquisition import Acquisition
 from dataset import getMOM4data, getTOYdata
 from surrogate import SurrogateModel
 from utils.utils import (checkParamIsSentToCuda, clean_memory, loadReflowOven,
-                         make_pd_series, objective, reflow_oven, namestr,
+                         make_pd_series, objective, reflow_oven, 
                          set_decomposition_type, set_global_params)
 
 ''' global variables '''
@@ -34,13 +34,13 @@ def parse():
     parse_start = time.time()
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--toy', '--TOY', action='store_true', help='sets to toy dataset')
+    parser.add_argument('--toy', action='store_true', help='sets to toy dataset')
     parser.add_argument('--load_rf', default='reflow_oven/models/regr_multirf_pre_all.pkl', type=str, help='path to reflow oven model')
     parser.add_argument('--model', default='GP', type=str, help='surrogate model type')
     parser.add_argument('--load', default=None, type=str, help='path to checkpoint [pt] file')
     parser.add_argument('--chip', default='R1005', type=str, help='chip part type')
-    parser.add_argument('--context', default=False, action='store_true', help='flag to increment context size over iterations, instead of target size')
-    parser.add_argument('--cholesky', default=True, action='store_false', help='sets boolean to use cholesky decomposition')
+    parser.add_argument('--not_increment_context', default=True, action='store_false', help='increments context size over iterations, instead of target size')
+    parser.add_argument('--cholesky', default=False, action='store_true', help='sets boolean to use cholesky decomposition')
     args = parser.parse_args()
     
     parse_end = time.time(); print('parsing took: %.3f seconds' % (parse_end - parse_start))
@@ -49,9 +49,9 @@ def parse():
 ''' main function '''
 def main():
     args = parse()
-    device = set_global_params()    
-    set_decomposition_type(not args.cholesky)
-    clean_memory()
+    device = set_global_params()            # sets seed, device type, cudnn benchmark, suppresses warnings
+    set_decomposition_type(args.cholesky)   # if argument is True, then computes exact decomposition using Cholesky
+    clean_memory()                          # garbage collection and cuda clear memory cache
     
     # load config parameters
     cfg = yaml.load(open('config.yml', 'r'), yaml.FullLoader)
@@ -59,7 +59,7 @@ def main():
     NUM_TRAIN_EPOCH = cfg['train']['num_epoch']
     NUM_SAMPLES = cfg['train']['num_samples']
     CHIP = cfg['MOM4']['parttype'] = args.chip
-    MODEL = args.model.upper() # either ['GP','NP','ANP']
+    MODEL = args.model.upper() # ['GP','NP','ANP']
     
     # manipulate cfg for context and target size
     cfg['acquisition']['num_restarts'] = cfg['acquisition']['raw_samples']
@@ -68,7 +68,7 @@ def main():
     else:
         cfg[args.model.lower()] = {'num_context': (cfg['train']['num_samples'] - cfg['acquisition']['num_restarts'])}
     
-    # tensorboard 
+    # tensorboard summary writer
     writer = SummaryWriter(f'runs/{CHIP}_{MODEL}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples')
     
     # load reflow oven regressor
@@ -91,7 +91,7 @@ def main():
     print('[INFO] initializing surrogate model:', MODEL, end='')
     ITER_FROM = 0
     surrogate = SurrogateModel(inputs, targets, args, cfg,
-                               writer = writer, device = device, 
+                               writer=writer, device=device, 
                                epochs=NUM_TRAIN_EPOCH, model_type=MODEL)
     
     # load model is load path is provided
@@ -121,11 +121,11 @@ def main():
     initial_train_start = time.time()
     if 'NP' in MODEL:
         optimize_np_bool = True
-        info_dict = surrogate.fitNP(inputs, targets, cfg, toy_bool=args.toy)
+        info_dict = surrogate.fitNP(inputs, targets, cfg, toy_bool=args.toy, device=device)
     else:
         info_dict = surrogate.fitGP(inputs, targets, cfg, toy_bool=args.toy, iter=ITER_FROM)
     initial_train_end = time.time()
-    print(f'[INFO] initial train time: {initial_train_end-initial_train_start:.3f} sec')
+    print(f'[INFO] initial train time: {CRED} {initial_train_end-initial_train_start:.3f} sec {CEND}')
 
     # training loop
     fig = plt.figure()
@@ -133,9 +133,13 @@ def main():
     candidates_input_dist, candidates_output_dist = [], []
     t = trange(ITER_FROM+1, NUM_ITER+1, 1)
     
+    # plot initial samples
+    ax.scatter(inputs[:,0].cpu(), inputs[:,1].cpu(), s=10, alpha=0.5, color='yellow', label='input PRE')
+    ax.scatter(outputs[:,0].cpu(), outputs[:,1].cpu(), s=10, alpha=0.1, color='blue', label='input POST')
+    
     # surrogate.model is SingleTaskGP (GP) or NeuralProcess (NP) or AttentiveNeuralProcess (ANP)
     acq_fcn = Acquisition(cfg=cfg, model=surrogate.model, device=device, model_type=MODEL)
-    candidate_input_list, candidate_output_list = [], []
+    candidate_input_list, candidate_output_list = pd.DataFrame([], columns=['x','y']), pd.DataFrame([], columns=['x','y'])
     for iter in t:
         # optimize acquisition functions and get new observations
         acq_start = time.time()
@@ -143,6 +147,7 @@ def main():
         acq_end = time.time()
         
         # add mounter noise: a uniform random distribution ~U(a, b)
+        # 가다가 중간에 큰 값 추가
         a, b = cfg['acquisition']['bounds'], 0 # ~U(120, 0)
         scaler = lambda x: b + (a - b) * x
         mounter_noise = scaler(torch.rand(candidate_inputs.shape))
@@ -171,7 +176,7 @@ def main():
         # adjust context or target size
         ''' do either of the following '''
         if 'NP' in MODEL:
-            if args.context == True:
+            if args.not_increment_context == True:
                 # increment context size
                 cfg[args.model.lower()]['num_context'] += 1 # prior
             else:
@@ -183,7 +188,7 @@ def main():
         # re-initialize the models so they are ready for fitting on next iteration and re-train
         retrain_start = time.time()
         if 'NP' in MODEL:
-            info_dict = surrogate.fitNP(inputs, targets, cfg, toy_bool=args.toy, iter=iter)
+            info_dict = surrogate.fitNP(inputs, targets, cfg, toy_bool=args.toy, device=device,  iter=iter)
         else:
             info_dict = surrogate.fitGP(inputs, targets, cfg, toy_bool=args.toy, iter=iter)
         retrain_end = time.time()
@@ -193,8 +198,8 @@ def main():
             desc=f"iteration {iter:>3}/{NUM_ITER-ITER_FROM} / loss: {info_dict['fopt']:.3f}," +
                     # f'drawn candidate input: {candidate_inputs} ({candidate_inputs.shape}),' +
                     # f'candidate output: {candidate_outputs} ({candidate_outputs.shape},' +
-                    f'\nprocessing time:' +
-                    f'{CRED} (total): {retrain_end-acq_start:.5f} sec, {CEND}' +
+                    f'\nprocessing:' +
+                    f'{CRED} total: {retrain_end-acq_start:.5f} sec, {CEND}' +
                     # f'(acq): {acq_end-acq_start:.5f} sec,' +
                     # f'(reflow oven): {reflowoven_end-reflowoven_start:.5f} sec,' +
                     # f'(retrain): {retrain_end-retrain_start:.5f} sec,' +
@@ -203,16 +208,20 @@ def main():
         
         # plot PRE (x,y), POST (x,y)
         alpha = (iter)*1/(NUM_ITER-ITER_FROM) if iter > 1 else 1
-        ax.scatter(candidate_inputs[0][0].cpu(), candidate_inputs[0][1].cpu(), s=10, alpha=alpha, color='magenta', label='_nolegend_')
-        ax.scatter(candidate_outputs[0][0], candidate_outputs[0][1], s=10,alpha=alpha, color='green', label='_nolegend_')
+        # alpha = 1
+        ax.scatter(candidate_inputs[0][0].cpu(), candidate_inputs[0][1].cpu(), s=10, alpha=alpha, color='red', label='_nolegend_')
+        ax.scatter(candidate_outputs[0][0], candidate_outputs[0][1], s=10, alpha=alpha, color='green', label='_nolegend_')
 
         # append to candidate input/output list
-        candidate_input_list.append((candidate_inputs[0][0].cpu(),candidate_inputs[0][1].cpu()))
-        candidate_output_list.append((candidate_outputs[0][0],candidate_outputs[0][1]))
+        # candidate_input_list.append((candidate_inputs[0][0].cpu(),candidate_inputs[0][1].cpu()))
+        # candidate_output_list.append((candidate_outputs[0][0],candidate_outputs[0][1]))
+        
+        candidate_input_list.loc[iter-1] = [candidate_inputs[0][0].cpu().item(), candidate_inputs[0][1].cpu().item()]
+        candidate_output_list.loc[iter-1] = [candidate_outputs[0][0].item(), candidate_outputs[0][1].item()]
     
     # plot final inputs and outputs (for legend)
-    ax.scatter(candidate_inputs[0][0].cpu(), candidate_inputs[0][1].cpu(), s=10, color='magenta', label='candidate PRE')
-    ax.scatter(candidate_outputs[0][0], candidate_outputs[0][1], s=10, color='green', label='candidate POST')
+    ax.scatter(candidate_inputs[0][0].cpu(), candidate_inputs[0][1].cpu(), alpha=1, s=10, color='red', label='candidate PRE')
+    ax.scatter(candidate_outputs[0][0], candidate_outputs[0][1], alpha=1, s=10, color='green', label='candidate POST')
     
     # print all distances at once
     print('\nCandidate distances')
@@ -222,13 +231,14 @@ def main():
     
     # compare with randomly sampled data as pre inputs (bounded within candidate samples)
     cfg['train']['num_samples'] = len(candidates_input_dist)
-    get_min_max = lambda mylist: [min(mylist), max(mylist)]
-    min_input_x, max_input_x = get_min_max([val[0] for val in candidate_input_list])
-    min_input_y, max_input_y = get_min_max([val[1] for val in candidate_input_list])
+    min_input_x, max_input_x = candidate_input_list['x'].min(), candidate_input_list['x'].max()
+    min_input_y, max_input_y = candidate_input_list['y'].min(), candidate_input_list['y'].max()
     random_x = (max_input_x - min_input_x) * torch.rand(cfg['train']['num_samples'],1, device='cpu') + min_input_x
     random_y = (max_input_y - min_input_y) * torch.rand(cfg['train']['num_samples'],1, device='cpu') + min_input_y
     random_samples = np.concatenate((random_x, random_y), axis=1)
     random_samples_outputs = reflow_oven(random_samples[:,0:2], regr_multirf)
+    
+    # plot 
     # ax.scatter(random_samples[:,0], random_samples[:,1], s=10, alpha=0.5, color='yellow', label='random PRE')
     # ax.scatter(random_samples_outputs[:,0], random_samples_outputs[:,1], s=10, alpha=1, color='blue', label='random POST')
     
@@ -250,9 +260,9 @@ def main():
     # stats.to_csv(f'./results/{CHIP}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples_stats.csv')
         
     # set axis (figure) attribute properties
-    # ax.legend(loc='best',labels=['PRE','POST','Random Normal input POST','Randomly sampled data input POST'])
     # ax.legend(loc='lower left',labels=['candidate PRE','candidate POST', 'random PRE','random POST'])
-    ax.legend(loc='lower left',labels=['candidate PRE','candidate POST'])
+    # ax.legend(loc='lower left',labels=['candidate PRE','candidate POST'])
+    ax.legend(loc='lower left',labels=['candidate PRE','candidate POST', 'input PRE','input POST'])
     params = {"text.color" : "blue",
           "xtick.color" : "crimson",
           "ytick.color" : "crimson"}
@@ -265,7 +275,7 @@ def main():
     ax.grid(True)
     
     # save figure
-    context_or_target = 'context++' if args.context else 'target++'
+    context_or_target = 'context++' if args.not_increment_context else 'target++'
     image_save_path = f'results/{CHIP}_{MODEL}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples'
     if 'NP' in MODEL:
          image_save_path += f'_{context_or_target}.png'

@@ -21,7 +21,7 @@ class NP(nn.Module):
         self.representation_encoder = DeterministicEncoder(self.x_dim, self.y_dim, self.r_dim)
         self.latent_encoder = LatentEncoder(self.r_dim, self.z_dim)
         self.decoder = Decoder(self.x_dim, self.y_dim, self.z_dim)
-                
+        
         self.BCELoss = nn.BCELoss(reduction='mean')
         self.num_outputs = self.y_dim
         
@@ -31,7 +31,7 @@ class NP(nn.Module):
         self.std_normal = torch.distributions.Normal(0.0, 1.0)
         self.elbo_samples = int(self.z_dim * 2)
 
-    def forward(self, x_context, y_context, x_target, y_target = None):
+    def forward(self, x_context, y_context, x_target, y_target=None):
         
         # add batch size dimension at 0
         x = torch.cat([x_context, x_target], dim=0)

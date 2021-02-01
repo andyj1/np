@@ -13,9 +13,10 @@ acquisition:        # by default, it uses multi-start optimization
   raw_samples: 10   # number of samples for initialization
 
 train:
-  lr: 0.0001 #0.01
-  num_iter: 100
-  num_epoch: 5
+  optimizer: 'SGD' # must be in torch.optim ['Adam', 'SGD']
+  lr: 0.001
+  num_iter: 200
+  num_epoch: 100
   display_for_every: 5 # number of lines of training state results printed
   num_samples: 1000
 
