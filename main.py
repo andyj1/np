@@ -38,7 +38,7 @@ def parse():
     parser.add_argument('--load_rf', default='reflow_oven/models/regr_multirf_pre_all.pkl', type=str, help='path to reflow oven model')
     parser.add_argument('--model', default='GP', type=str, help='surrogate model type')
     parser.add_argument('--load', default=None, type=str, help='path to checkpoint [pt] file')
-    parser.add_argument('--chip', default='R1005', type=str, help='chip part type')
+    parser.add_argument('--chip', default=None, type=str, help='chip part type')
     parser.add_argument('--not_increment_context', default=True, action='store_false', help='increments context size over iterations, instead of target size')
     parser.add_argument('--cholesky', default=False, action='store_true', help='sets boolean to use cholesky decomposition')
     args = parser.parse_args()
@@ -58,7 +58,10 @@ def main():
     NUM_ITER = cfg['train']['num_iter']
     NUM_TRAIN_EPOCH = cfg['train']['num_epoch']
     NUM_SAMPLES = cfg['train']['num_samples']
-    CHIP = cfg['MOM4']['parttype'] = args.chip
+    if args.chip is None:
+        CHIP = cfg['MOM4']['parttype']
+    else:
+        CHIP = cfg['MOM4']['parttype'] = args.chip
     MODEL = args.model.upper() # ['GP','NP','ANP']
     
     # manipulate cfg for context and target size
@@ -88,7 +91,7 @@ def main():
     initial_output_dists = np.array([objective(x,y) for x, y in zip(outputs[:,0], outputs[:,1])])
 
     # initialize model and likelihood
-    print('[INFO] initializing surrogate model:', MODEL, end='')
+    print(f'[INFO] loading model: {MODEL}, chip: {CHIP}')
     ITER_FROM = 0
     surrogate = SurrogateModel(inputs, targets, args, cfg,
                                writer=writer, device=device, 
@@ -121,7 +124,7 @@ def main():
     initial_train_start = time.time()
     if 'NP' in MODEL:
         optimize_np_bool = True
-        info_dict = surrogate.fitNP(inputs, targets, cfg, toy_bool=args.toy, device=device)
+        info_dict = surrogate.fitNP(inputs, targets, cfg, toy_bool=args.toy)
     else:
         info_dict = surrogate.fitGP(inputs, targets, cfg, toy_bool=args.toy, iter=ITER_FROM)
     initial_train_end = time.time()
@@ -188,7 +191,7 @@ def main():
         # re-initialize the models so they are ready for fitting on next iteration and re-train
         retrain_start = time.time()
         if 'NP' in MODEL:
-            info_dict = surrogate.fitNP(inputs, targets, cfg, toy_bool=args.toy, device=device,  iter=iter)
+            info_dict = surrogate.fitNP(inputs, targets, cfg, toy_bool=args.toy, iter=iter)
         else:
             info_dict = surrogate.fitGP(inputs, targets, cfg, toy_bool=args.toy, iter=iter)
         retrain_end = time.time()

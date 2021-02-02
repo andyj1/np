@@ -44,6 +44,13 @@ class SurrogateModel(object):
         self.epochs = epochs
         self.model_type = model_type
         
+        self.model, mll = self.initialize_model(cfg, self.model_type, train_X, train_Y)
+        
+        self.DISPLAY_FOR_EVERY = cfg['train']['display_for_every']
+        if cfg['train']['optimizer'] == 'Adam':
+            self.optimizer_cls = optim.Adam
+        elif cfg['train']['optimizer'] == 'SGD':
+            self.optimizer_cls = optim.SGD
         # configure optimizer
         self.lr = cfg['train']['lr']
         self.optimizer = self.optimizer_cls(self.model.parameters(), lr=self.lr)
@@ -52,19 +59,11 @@ class SurrogateModel(object):
         self.device = device
         self.dtype = torch.float
         self.writer = writer
-
-        self.model, mll = self.initialize_model(cfg, self.model_type, train_X, train_Y).to(self.device)
-        
-        self.DISPLAY_FOR_EVERY = cfg['train']['display_for_every']
-        if cfg['train']['optimizer'] == 'Adam':
-            self.optimizer_cls = optim.Adam
-        elif cfg['train']['optimizer'] == 'SGD':
-            self.optimizer_cls = optim.SGD
         # optimizer_cls = optim.AdamW
         # optimizer_cls = optim.SparseAdam # doesn't support dense gradients
         # self.optimizer_cls = optim.Adamax
         
-
+        self.model.to(self.device)
         end_time = time.time()
         print(': took %.3f seconds' % (end_time-start_time))
         
@@ -130,8 +129,8 @@ class SurrogateModel(object):
         info_dict = {}
         
         # re-initialize a new model to train
-        self.model = self.initialize_model(cfg, self.model_type, train_X, train_Y).to(self.device)
-            
+        self.model,_ = self.initialize_model(cfg, self.model_type, train_X, train_Y)
+        self.model.to(self.device)
         # set to train mode
         self.model.train()
             

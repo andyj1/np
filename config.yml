@@ -1,7 +1,3 @@
-toy:
-  mu: 0
-  sigma: 120
-
 acquisition:        # by default, it uses multi-start optimization
   option: 1         # acquisition function type: [1: UCB, 2: EI, 3: qEI, ...]
   q: 1              # smallest number of candidates to be considered jointly; q=1 for single-outcome
@@ -15,11 +11,12 @@ acquisition:        # by default, it uses multi-start optimization
 train:
   optimizer: 'SGD' # must be in torch.optim ['Adam', 'SGD']
   lr: 0.001
-  num_iter: 200
+  num_iter: 50
   num_epoch: 100
   display_for_every: 5 # number of lines of training state results printed
   num_samples: 1000
 
+# models
 anp:
   input_dim: 2 # context_x: 2, context_y: 1
   output_dim: 1
@@ -32,6 +29,11 @@ np:
   repr_dim: 32  # r
   latent_dim: 10 # z
   # num_context: (empty) # must be ${train.num_samples} - ${acquisition.num_restarts or raw_samples}
+
+# data
+toy:
+  mu: 0
+  sigma: 120
 
 MOM4:
   parttype: R1005 # [R0402, R0603, R1005
