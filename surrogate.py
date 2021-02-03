@@ -71,15 +71,15 @@ class SurrogateModel(object):
     def fitGP(self, train_X, train_Y, cfg, toy_bool=False, iter=0):
         chip = cfg['MOM4']['parttype']
         
-        self.model, mll = self.initialize_model(cfg, self.model_type, train_X, train_Y).to(self.device)
-        
+        self.model, mll = self.initialize_model(cfg, self.model_type, train_X, train_Y)
+        self.model.to(self.device)
         # default wrapper tor training
         # fit_gpytorch_model(mll)
         mll.train()
         
         # customize optimizer in 'fit.py' in fit_gpytorch_torch()
         # optimizer need not have a closure
-        optimizer_options = {'lr': 0.05, "maxiter": self.epochs, "disp": True} # for botorch
+        optimizer_options = {'lr': cfg['train']['lr'], 'maxiter': cfg['train']['num_iter'], 'disp': True}
         
         ''' define custom optimizer using optimizer class: "self.optimizer_cls" '''
         # self.optimizer = self.optimizer_cls(model.parameters())
@@ -182,9 +182,9 @@ class SurrogateModel(object):
         elif model_type == 'ANP':
             model = AttentiveNeuralProcesses(cfg)
         elif self.model_type == 'GP':
-            self.model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
-            self.model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
-            mll = ExactMarginalLogLikelihood(likelihood=self.model.likelihood, model=self.model)
+            model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
+            model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
+            mll = ExactMarginalLogLikelihood(likelihood=model.likelihood, model=model)
             mll.to(train_X)
         
         return model, mll

@@ -103,7 +103,7 @@ def set_global_params():
     # sets behchmark mode in cudnn
     # benchmark mode is good whenever your input sizes for your network do not vary
     # ref: https://discuss.pytorch.org/t/what-does-torch-backends-cudnn-benchmark-do/5936
-    torch.backends.cudnn.benchmark = True
+    # torch.backends.cudnn.benchmark = True
 
     return device
 

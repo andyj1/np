@@ -223,13 +223,13 @@ def main():
         candidate_output_list.loc[iter-1] = [candidate_outputs[0][0].item(), candidate_outputs[0][1].item()]
     
     # plot final inputs and outputs (for legend)
-    ax.scatter(candidate_inputs[0][0].cpu(), candidate_inputs[0][1].cpu(), alpha=1, s=10, color='red', label='candidate PRE')
-    ax.scatter(candidate_outputs[0][0], candidate_outputs[0][1], alpha=1, s=10, color='green', label='candidate POST')
+    ax.scatter(candidate_inputs[0][0].cpu(), candidate_inputs[0][1].cpu(), alpha=1, s=10, color='red', label='input PRE')
+    ax.scatter(candidate_outputs[0][0], candidate_outputs[0][1], alpha=1, s=10, color='green', label='input POST')
     
     # print all distances at once
     print('\nCandidate distances')
     for num, (pre, post) in enumerate(zip(candidates_input_dist, candidates_output_dist)):
-        print(f'# {num}: {pre:.3f} -> {post:.3f}')
+        print(f'# {num+1}: {pre:.3f} -> {post:.3f}')
     print()
     
     # compare with randomly sampled data as pre inputs (bounded within candidate samples)
@@ -265,7 +265,7 @@ def main():
     # set axis (figure) attribute properties
     # ax.legend(loc='lower left',labels=['candidate PRE','candidate POST', 'random PRE','random POST'])
     # ax.legend(loc='lower left',labels=['candidate PRE','candidate POST'])
-    ax.legend(loc='lower left',labels=['candidate PRE','candidate POST', 'input PRE','input POST'])
+    ax.legend(loc='lower left',labels=['input PRE','input POST','candidate PRE','candidate POST'])
     params = {"text.color" : "blue",
           "xtick.color" : "crimson",
           "ytick.color" : "crimson"}
