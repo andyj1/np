@@ -1,10 +1,6 @@
-torch>=1.7.0
-tqdm>=4.54.1
-pyyaml==5.3.1
-matplotlib==3.3.3
-botorch>=0.3.2
-tensorboard
-gpytorch
-seaborn
-joblib
-scikit-learn
+Package    Version
+---------- -------------------
+certifi    2020.12.5
+pip        20.3.3
+setuptools 52.0.0.post20210125
+wheel      0.36.2
