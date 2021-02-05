@@ -15,7 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import trange
 
 from acquisition import Acquisition
-from dataset import getMOM4data, getTOYdata
+from data.dataset import getMOM4data, getTOYdata
 from surrogate import SurrogateModel
 from utils.utils import (checkParamIsSentToCuda, clean_memory, loadReflowOven,
                          make_pd_series, objective, reflow_oven, 
