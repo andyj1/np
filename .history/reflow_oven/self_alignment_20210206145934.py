@@ -190,35 +190,24 @@ def create_self_alignment_model(args):
             # summary
             for (i1, r1), (i2, r2) in zip(X_test.iterrows(), y_regressor.iterrows()):
                 assert i1 == i2
-                info = f'({i1}) PRE: {np.linalg.norm((r1[0], r1[1])):.1f}, SPI: {np.linalg.norm((r1[2], r1[3])):.1f}, VOL: {r1[4]:.1f} -> POST: {np.linalg.norm((r2[0], r2[1])):.1f}'
-                if args.chip == 'R0402':
-                    ax.text(0, 90+(i1+i2)*-5, info, fontsize=8)
-                elif args.chip == 'R0603':
-                    ax.text(0, 90+(i1+i2)*-5, info, fontsize=8)
-                elif args.chip == 'R1005':
-                    ax.text(0, 240+(i1+i2)*-5, info, fontsize=8)
+                info = f'({i1}) PRE: {np.linalg.norm((r1[0], r1[1])):.1f},\t SPI: {np.linalg.norm((r1[2], r1[3])):.1f},\t VOL: {r1[4]:.1f} -> POST: {np.linalg.norm((r2[0], r2[1])):.1f}'
+                ax.text(0, 240+(i1+i2)*-5, info, fontsize=8)
 
             ax.set_xlabel("L")
             ax.set_ylabel("W")
             ax.set_title(f"chip: {chip},{regr2name[regressor_type]} regressor({args.num_trees} trees, {args.max_depth} deep) ({args.test_size} samples)")
-            if args.chip == 'R0402':
-                ax.set_ylim([-100, 100])
-                ax.set_xlim([-150, 150])    
-            elif args.chip == 'R0603':
-                ax.set_ylim([-100, 100])
-                ax.set_xlim([-150, 150])
-            else:
-                ax.set_ylim([-250, 250])
-                ax.set_xlim([-250, 250])
+            ax.set_ylim([-250, 250])
+            ax.set_xlim([-250, 250])
             ax.grid(True)
             # plt.legend()
 
             plt.savefig(f'chip_{chip}-{regr2name[regressor_type]} regressor({args.num_trees} trees, {args.max_depth} deep)_{args.test_size}_samples.png')
             print(f'saved regressor output to: chip_{chip}-{regr2name[regressor_type]} regressor({args.num_trees} trees, {args.max_depth} deep)_{args.test_size}_samples.png')
             
-            # plt.show()
+            plt.show()
             # plt.clf()
 
 
 if __name__ == '__main__':
-    create_self_alignment_model(parse_args())
+    args = parse_args()
+    create_self_alignment_model(args)

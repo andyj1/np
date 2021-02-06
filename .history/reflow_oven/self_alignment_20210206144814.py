@@ -52,7 +52,6 @@ def parse_args():
     parser.add_argument('--load_path', default=None, type=str, help='path to the model pickle file')
     parser.add_argument('--type', default=2, type=int, help="1: gradient boosting, 2: random forest")
     parser.add_argument('--test_size', default=200, type=int, help="test sample size (to plot)")
-    parser.add_argument('--chip', default='R1005', type=str, help="chip to sample test data from")
     args = parser.parse_args()
     return args
 
@@ -88,8 +87,7 @@ def create_self_alignment_model(args):
 
     if args.train:
         # (1) all chips
-        # chip = 'all'
-        chip = args.chip
+        chip = 'all'
         df = df[df['PartType']==chip] if chip is not 'all' else df
         # X =  pd.concat([df['PRE_X'] - df['SPI_X_AVG'], df['PRE_Y'] - df['SPI_Y_AVG']], axis=1).to_numpy()
         X = df[['PRE_L','PRE_W','SPI_L','SPI_W','SPI_VOLUME_MEAN']].to_numpy()
@@ -147,11 +145,10 @@ def create_self_alignment_model(args):
         print('Predicting...')
         
         # test with a few samples
-        chip = args.chip
+        chip = 'R1005'
         input_vars = ['PRE_L','PRE_W','SPI_L','SPI_W','SPI_VOLUME_MEAN']
         X_test = customMOM4chipsample(df, input_vars=input_vars, num_samples=args.test_size, chiptype=chip, random_state=SEED)
-        print('='*10, f'using {args.test_size} samples', '='*10)
-        print('chip: {chip}, input variables: {input_vars}')
+        print('='*10, f'using a few samples (chip: {chip}, input variables: {input_vars})', '='*10)
         print('X test:', X_test.shape)
 
         # Predict on new data
@@ -177,7 +174,7 @@ def create_self_alignment_model(args):
             for idx, row in X_test.iterrows():
                 ax.scatter(row[0], row[1], edgecolor='g', c="yellow", s=s, alpha=a, marker="o", label=f'PRE')
                 # add text
-                ax.annotate(f'({idx})', xy=(row[0], row[1])) #, xytext=(row[0]+1, row[1]+1))
+                ax.annotate(f'({idx})', xy=(row[0], row[1]), xytext=(row[0]+1, row[1]+1))
             
             # POST
             for idx, row in y_regressor.iterrows():
@@ -185,40 +182,29 @@ def create_self_alignment_model(args):
                             label=f'POST')
                             # label=f"regressor (score={regr.score(X_test, y_test):.2f})")
                 # add text
-                ax.annotate(f'({idx})', xy=(row[0], row[1])) #, xytext=(row[0]+1, row[1]+1))
+                ax.annotate(f'({idx})', xy=(row[0], row[1]), xytext=(row[0]+1, row[1]+1))
 
             # summary
             for (i1, r1), (i2, r2) in zip(X_test.iterrows(), y_regressor.iterrows()):
                 assert i1 == i2
-                info = f'({i1}) PRE: {np.linalg.norm((r1[0], r1[1])):.1f}, SPI: {np.linalg.norm((r1[2], r1[3])):.1f}, VOL: {r1[4]:.1f} -> POST: {np.linalg.norm((r2[0], r2[1])):.1f}'
-                if args.chip == 'R0402':
-                    ax.text(0, 90+(i1+i2)*-5, info, fontsize=8)
-                elif args.chip == 'R0603':
-                    ax.text(0, 90+(i1+i2)*-5, info, fontsize=8)
-                elif args.chip == 'R1005':
-                    ax.text(0, 240+(i1+i2)*-5, info, fontsize=8)
+                info = f'({i1}) PRE: {np.linalg.norm((r1[0], r1[1])):.1f}, SPI: {np.linalg.norm((r1[2], r1[3])):.1f}, VOL: {r1[4]:.1f} --> POST: {np.linalg.norm((r2[0], r2[1])):.1f}'
+                ax.text(5, i1+i2, info, fontsize=12)
 
             ax.set_xlabel("L")
             ax.set_ylabel("W")
             ax.set_title(f"chip: {chip},{regr2name[regressor_type]} regressor({args.num_trees} trees, {args.max_depth} deep) ({args.test_size} samples)")
-            if args.chip == 'R0402':
-                ax.set_ylim([-100, 100])
-                ax.set_xlim([-150, 150])    
-            elif args.chip == 'R0603':
-                ax.set_ylim([-100, 100])
-                ax.set_xlim([-150, 150])
-            else:
-                ax.set_ylim([-250, 250])
-                ax.set_xlim([-250, 250])
+            ax.set_ylim([-250, 250])
+            ax.set_xlim([-250, 250])
             ax.grid(True)
             # plt.legend()
 
             plt.savefig(f'chip_{chip}-{regr2name[regressor_type]} regressor({args.num_trees} trees, {args.max_depth} deep)_{args.test_size}_samples.png')
             print(f'saved regressor output to: chip_{chip}-{regr2name[regressor_type]} regressor({args.num_trees} trees, {args.max_depth} deep)_{args.test_size}_samples.png')
             
-            # plt.show()
+            plt.show()
             # plt.clf()
 
 
 if __name__ == '__main__':
-    create_self_alignment_model(parse_args())
+    args = parse_args()
+    create_self_alignment_model(args)
