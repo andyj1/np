@@ -1,6 +1,6 @@
 # omit files
 data/*.csv
-reflow_oven/models/
+reflow_oven/models/*
 data_analysis/*.pkl
 data_analysis/*.p
 runs/

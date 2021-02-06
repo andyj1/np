@@ -74,7 +74,7 @@ def create_self_alignment_model(args):
 
     ''' set data path'''
     dir_path = pathlib.Path().absolute()
-    file = '../data/imputed_data.csv'
+    file = './data/imputed_data.csv'
     data_path = dir_path / file
 
     ''' read data '''
@@ -96,7 +96,7 @@ def create_self_alignment_model(args):
         y = df[['POST_L','POST_W']].to_numpy()
 
         ''' set result path '''
-        result_path = './models'
+        result_path = './reflow_oven/models'
         if not os.path.isdir(result_path):
             os.makedirs(result_path, mode=0o755, exist_ok=True)
         train_save_filename = f'{result_path}/regressor_{chip}_{args.num_trees}_trees_{args.max_depth}_deep_{regr2name[regressor_type]}.pkl'
@@ -190,6 +190,8 @@ def create_self_alignment_model(args):
             # summary
             for (i1, r1), (i2, r2) in zip(X_test.iterrows(), y_regressor.iterrows()):
                 assert i1 == i2
+                # if args.chip == 'R0402':
+                    # text offset at 90
                 info = f'({i1}) PRE: {np.linalg.norm((r1[0], r1[1])):.1f}, SPI: {np.linalg.norm((r1[2], r1[3])):.1f}, VOL: {r1[4]:.1f} -> POST: {np.linalg.norm((r2[0], r2[1])):.1f}'
                 ax.text(0, 240+(i1+i2)*-5, info, fontsize=8)
 
@@ -197,12 +199,12 @@ def create_self_alignment_model(args):
             ax.set_ylabel("W")
             ax.set_title(f"chip: {chip},{regr2name[regressor_type]} regressor({args.num_trees} trees, {args.max_depth} deep) ({args.test_size} samples)")
             if args.chip == 'R0402':
-                ax.set_ylim([-100, 100])
-                ax.set_xlim([-150, 150])    
+                ax.set_ylim([-250, 250])
+                ax.set_xlim([-250, 250])    
             elif args.chip == 'R0603':
-                ax.set_ylim([-100, 100])
-                ax.set_xlim([-150, 150])
-            else:
+                ax.set_ylim([-250, 250])
+                ax.set_xlim([-250, 250])
+            elif args.chip == 'R1005':
                 ax.set_ylim([-250, 250])
                 ax.set_xlim([-250, 250])
             ax.grid(True)
