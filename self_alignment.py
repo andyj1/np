@@ -1,17 +1,20 @@
 
 import argparse
+import csv
 import os
-import sys
 import pathlib
+import sys
 
-import joblib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+
+import joblib
 import torch
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.multioutput import MultiOutputRegressor
+
 
 '''
 get MOM4 data by chip
@@ -188,13 +191,30 @@ def create_self_alignment_model(args):
                 ax.annotate(f'({idx})', xy=(row[0], row[1])) #, xytext=(row[0]+1, row[1]+1))
 
             # summary
+            result_csv = open('reflow_oven/summary.csv', mode='w')
+            result_csv = csv.writer(result_csv, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            result_csv.writerow(['PRE DIR','SPI DIR','PRE-SPI','PRE DIST','SPI DIST','AVG SPI_VOLUME', 'POST DIST'])
+
             for (i1, r1), (i2, r2) in zip(X_test.iterrows(), y_regressor.iterrows()):
                 assert i1 == i2
                 # if args.chip == 'R0402':
                     # text offset at 90
                 info = f'({i1}) PRE: {np.linalg.norm((r1[0], r1[1])):.1f}, SPI: {np.linalg.norm((r1[2], r1[3])):.1f}, VOL: {r1[4]:.1f} -> POST: {np.linalg.norm((r2[0], r2[1])):.1f}'
-                ax.text(0, 240+(i1+i2)*-5, info, fontsize=8)
-
+                # ax.text(0, 240+(i1+i2)*-5, info, fontsize=8)
+                
+                prex_sign = 1 if r1[0] > 0 else -1
+                prey_sign = 1 if r1[1] > 0 else -1
+                spix_sign = 1 if r1[2] > 0 else -1
+                spiy_sign = 1 if r1[3] > 0 else -1
+                pre_minus_spi = f'{np.linalg.norm((r1[0]-r1[2], r1[1]-r1[3])):.1f}'
+                print(f'({prex_sign}/{prey_sign}), ({spix_sign}/{spiy_sign}), {pre_minus_spi}, {np.linalg.norm((r1[0], r1[1])):.1f}, {np.linalg.norm((r1[2], r1[3])):.1f}, {r1[4]:.1f}, {np.linalg.norm((r2[0], r2[1])):.1f}')
+                result_csv.writerow([f'({prex_sign}/{prey_sign})', 
+                                     f'({spix_sign}/{spiy_sign})', 
+                                     f'{pre_minus_spi}', 
+                                     f'{np.linalg.norm((r1[0], r1[1])):.1f}', 
+                                     f'{np.linalg.norm((r1[2], r1[3])):.1f}', 
+                                     f'{r1[4]:.1f}', f'{np.linalg.norm((r2[0], r2[1])):.1f}'])
+                
             ax.set_xlabel("L")
             ax.set_ylabel("W")
             ax.set_title(f"chip: {chip},{regr2name[regressor_type]} regressor({args.num_trees} trees, {args.max_depth} deep) ({args.test_size} samples)")
@@ -213,6 +233,8 @@ def create_self_alignment_model(args):
             plt.savefig(f'chip_{chip}-{regr2name[regressor_type]} regressor({args.num_trees} trees, {args.max_depth} deep)_{args.test_size}_samples.png')
             print(f'saved regressor output to: chip_{chip}-{regr2name[regressor_type]} regressor({args.num_trees} trees, {args.max_depth} deep)_{args.test_size}_samples.png')
             
+            
+            result_csv.close()
             # plt.show()
             # plt.clf()
 
