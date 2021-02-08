@@ -6,7 +6,8 @@
 - mounter는 계속 PRE를 return해야하지만, POST는 받는데 딜레이가 있다
 - 
 # todo
-- MOUNTER: noise level 어느정도 줘야할지 데이터에서 찾아보기. 현재 임의로 120 준 상태
+- MOUNTER: noise level 어느정도 줘야할지 데이터에서 찾아보기. 현재 임의로 120 
+준 상태
 - REFLOW OVEN: 중심 origin에서 상대적으로 많이 떨어진 PRE에서 더 잘 모이는지 등 비교
 
 
