@@ -206,7 +206,6 @@ def optimize_acqf(
 Note: there are cyclic and list versions in the original code
 '''
 
-
 def optimize_acqf_NP(
     acq_function: AcquisitionFunction,
     bounds: Tensor,
@@ -337,7 +336,7 @@ def optimize_acqf_NP(
             raw_samples=raw_samples,
             options=options,
         )
-
+    
     batch_limit: int = options.get("batch_limit", num_restarts)
     batch_candidates_list: List[Tensor] = []
     batch_acq_values_list: List[Tensor] = []

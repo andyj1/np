@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import torch
 import yaml
-from torch.utils.tensorboard import SummaryWriter
+from tensorboardX import SummaryWriter
 from tqdm import trange
 
 from acquisition import Acquisition
@@ -35,7 +35,7 @@ def parse():
     
     parser = argparse.ArgumentParser()
     parser.add_argument('--toy', action='store_true', help='sets to toy dataset')
-    parser.add_argument('--load_rf', default='reflow_oven/models/regr_multirf_pre_all.pkl', type=str, help='path to reflow oven model')
+    parser.add_argument('--load_rf', default='reflow_oven/models/regr_multirf_all_50_trees_100_deep_random_forest.pkl', type=str, help='path to reflow oven model')
     parser.add_argument('--model', default='GP', type=str, help='surrogate model type')
     parser.add_argument('--load', default=None, type=str, help='path to checkpoint [pt] file')
     parser.add_argument('--chip', default=None, type=str, help='chip part type')
@@ -50,6 +50,7 @@ def parse():
 def main():
     args = parse()
     device = set_global_params()            # sets seed, device type, cudnn benchmark, suppresses warnings
+    print('running on:',str(device).lower())
     set_decomposition_type(args.cholesky)   # if argument is True, then computes exact decomposition using Cholesky
     clean_memory()                          # garbage collection and cuda clear memory cache
     
@@ -65,11 +66,12 @@ def main():
     MODEL = args.model.upper() # ['GP','NP','ANP']
     
     # manipulate cfg for context and target size
-    cfg['acquisition']['num_restarts'] = cfg['acquisition']['raw_samples']
-    if args.model.lower() in cfg.keys():
-        cfg[args.model.lower()]['num_context'] = (cfg['train']['num_samples'] - cfg['acquisition']['num_restarts'])
-    else:
-        cfg[args.model.lower()] = {'num_context': (cfg['train']['num_samples'] - cfg['acquisition']['num_restarts'])}
+    # cfg['acquisition']['num_restarts'] = cfg['acquisition']['raw_samples']
+    # if args.model.lower() in cfg.keys():
+    #     cfg[args.model.lower()]['num_context'] = 0
+    # cfg[args.model.lower()].update({'num_context': (cfg['train']['num_samples'] - cfg['acquisition']['num_restarts'])})
+    
+    print(f'{CRED}num_context{CEND}:', cfg[args.model.lower()]['num_context'])
     
     # tensorboard summary writer
     writer = SummaryWriter(f'runs/{CHIP}_{MODEL}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples')
@@ -82,20 +84,24 @@ def main():
     data_path = './data/imputed_data.csv'
     print(f'[INFO] loading data from {data_path}', end='')
     inputs, outputs = getTOYdata(cfg, model=regr_multirf) if args.toy else getMOM4data(cfg, data_path=data_path)
-    
     # objective function: to minimize the distance from POST to origin toward zero
     targets = torch.FloatTensor([objective(x1, x2) for x1, x2 in zip(outputs[:,0], outputs[:,1])]).unsqueeze(1)
 
+    print(f'{CRED}input{CEND}:',inputs.shape, f'{CRED}output{CEND}:',outputs.shape, f'{CRED}target{CEND}:',targets.shape)
     # stats about [inputs, targets] for the surrogate model
     initial_input_dists = np.array([objective(x,y) for x, y in zip(inputs[:,0], inputs[:,1])])
     initial_output_dists = np.array([objective(x,y) for x, y in zip(outputs[:,0], outputs[:,1])])
 
     # initialize model and likelihood
-    print(f'[INFO] loading model: {MODEL}, chip: {CHIP}')
+    # GP model (SingleTaskGP) requires inputs and targets at initialization
+    print(f'[INFO] loading model: {MODEL}, chip: {CHIP}', end='')
     ITER_FROM = 0
+    start_time = time.time()
     surrogate = SurrogateModel(inputs, targets, args, cfg,
                                writer=writer, device=device, 
                                epochs=NUM_TRAIN_EPOCH, model_type=MODEL)
+    end_time = time.time()
+    print(': took %.3f seconds' % (end_time-start_time))
     
     # load model is load path is provided
     if args.load is not None:
@@ -110,7 +116,7 @@ def main():
     inputs = inputs.to(device)
     targets = targets.to(device)
     
-    # check if the parameter is sent to cuda
+    # check if the parameter is indeed sent to cuda
     assert [True, True, True] == checkParamIsSentToCuda([next(surrogate.model.parameters()), inputs, targets]) if device == 'cuda' else [False,False,False]
 
     # prepare folders for checkpoints
@@ -130,6 +136,7 @@ def main():
     initial_train_end = time.time()
     print(f'[INFO] initial train time: {CRED} {initial_train_end-initial_train_start:.3f} sec {CEND}')
 
+    
     # training loop
     fig = plt.figure()
     ax = fig.add_subplot()
@@ -149,9 +156,13 @@ def main():
         candidate_inputs, acq_value = acq_fcn.optimize(np=optimize_np_bool)
         acq_end = time.time()
         
+        print(candidate_inputs)
+        sys.exit(0)
+        
         # add mounter noise: a uniform random distribution ~U(a, b)
         # 가다가 중간에 큰 값 추가
         a, b = cfg['acquisition']['bounds'], 0 # ~U(120, 0)
+    
         scaler = lambda x: b + (a - b) * x
         mounter_noise = scaler(torch.rand(candidate_inputs.shape))
         candidate_inputs += mounter_noise.to(device)
@@ -177,17 +188,17 @@ def main():
         targets = torch.cat([targets, new_target], dim=0)
         
         # adjust context or target size
-        ''' do either of the following '''
-        if 'NP' in MODEL:
-            if args.not_increment_context == True:
-                # increment context size
-                cfg[args.model.lower()]['num_context'] += 1 # prior
-            else:
-                # increment target size
-                acq_fcn.num_restarts += 1
-                acq_fcn.raw_samples += 1
-            print(f"[INFO] NP: context size: {cfg[args.model.lower()]['num_context']}, target size: {acq_fcn.num_restarts}")
-        
+        # ''' do either of the following '''
+        # if 'NP' in MODEL:
+        #     if args.not_increment_context == True:
+        #         # increment context size
+        #         cfg[args.model.lower()]['num_context'] += 1 # prior
+        #     else:
+        #         # increment target size
+        #         acq_fcn.num_restarts += 1
+        #         acq_fcn.raw_samples += 1
+        #     print(f"[INFO] NP: context size: {cfg[args.model.lower()]['num_context']}, target size: {acq_fcn.num_restarts}")
+                
         # re-initialize the models so they are ready for fitting on next iteration and re-train
         retrain_start = time.time()
         if 'NP' in MODEL:

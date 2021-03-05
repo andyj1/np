@@ -13,7 +13,7 @@ from botorch.models import SingleTaskGP
 from gpytorch.constraints.constraints import GreaterThan
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from torch.optim import SGD
-from tqdm import trange
+from tqdm import tqdm, trange
 
 # from botorch.fit import fit_gpytorch_model
 from custom.fit import fit_gpytorch_torch
@@ -38,41 +38,36 @@ def save_ckpt(model, optimizer, np_bool, chip, iter):
 class SurrogateModel(object):
     def __init__(self, train_X, train_Y, args, cfg, writer, device=torch.device('cpu'), epochs=100, model_type='GP'):
         super(SurrogateModel, self).__init__()
-        
-        start_time = time.time()
-        
-        self.epochs = epochs
-        self.model_type = model_type
-        
-        self.model, mll = self.initialize_model(cfg, self.model_type, train_X, train_Y)
-        
-        self.DISPLAY_FOR_EVERY = cfg['train']['display_for_every']
-        if cfg['train']['optimizer'] == 'Adam':
-            self.optimizer_cls = optim.Adam
-        elif cfg['train']['optimizer'] == 'SGD':
-            self.optimizer_cls = optim.SGD
-        # configure optimizer
-        self.lr = cfg['train']['lr']
-        self.optimizer = self.optimizer_cls(self.model.parameters(), lr=self.lr)
-        
+                
         # use GPU if available
         self.device = device
         self.dtype = torch.float
         self.writer = writer
+        
+        self.epochs = epochs
+        self.model_type = model_type
+        self.model, mll = self.initialize_model(cfg, self.model_type, train_X, train_Y, self.device)
+        self.DISPLAY_FOR_EVERY = cfg['train']['display_for_every']
+        self.num_context = cfg[self.model_type.lower()]['num_context']
+        
+        # configure optimizer
+        if cfg['train']['optimizer'] == 'Adam':
+            self.optimizer_cls = optim.Adam
+        elif cfg['train']['optimizer'] == 'SGD':
+            self.optimizer_cls = optim.SGD
         # optimizer_cls = optim.AdamW
         # optimizer_cls = optim.SparseAdam # doesn't support dense gradients
         # self.optimizer_cls = optim.Adamax
-        
-        self.model.to(self.device)
-        end_time = time.time()
-        print(': took %.3f seconds' % (end_time-start_time))
+
+        # initialize optimizer
+        self.lr = cfg['train']['lr']
+        self.optimizer = self.optimizer_cls(self.model.parameters(), lr=self.lr)
         
     # custom GP fitting
     def fitGP(self, train_X, train_Y, cfg, toy_bool=False, iter=0):
         chip = cfg['MOM4']['parttype']
         
-        self.model, mll = self.initialize_model(cfg, self.model_type, train_X, train_Y)
-        self.model.to(self.device)
+        self.model, mll = self.initialize_model(cfg, self.model_type, train_X, train_Y, self.device)
         # default wrapper tor training
         # fit_gpytorch_model(mll)
         mll.train()
@@ -126,61 +121,70 @@ class SurrogateModel(object):
     
     def fitNP(self, train_X, train_Y, cfg, toy_bool=False, iter=0):
         chip = cfg['MOM4']['parttype']
+        n_iter = cfg['np']['n_iter']
+        test_for_every = cfg['train']['display_for_every']
         info_dict = {}
         
         # re-initialize a new model to train
-        self.model,_ = self.initialize_model(cfg, self.model_type, train_X, train_Y)
+        self.model, _ = self.initialize_model(cfg, self.model_type, train_X, train_Y, self.device)
         self.model.to(self.device)
-        # set to train mode
-        self.model.train()
+        
+        t = tqdm(range(self.epochs), total=self.epochs)
+        for train_epoch in t:
+            epoch_loss = 0.
             
-        epoch_loss = 0.0    
-        num_context = cfg[self.model_type.lower()]['num_context']
-        for train_epoch in range(self.epochs):
-            epoch_loss = 0.0
-            self.adjust_learning_rate(init_lr=self.lr, optimizer=self.optimizer, step_num=train_epoch+1)
-            self.optimizer.zero_grad()
+            # split data into context and target
+            context_x, context_y, target_x, target_y = random_split_context_target(train_X, train_Y, self.num_context)
+            # print(f'[INFO] context_x: {context_x.shape}, context_y:{context_y.shape}, target_x:{target_x.shape}, target_y:{target_y.shape}')
             
-            # split into context and target
-            x_context, y_context, x_target, y_target = random_split_context_target(train_X, train_Y, num_context)
-            # print(f'[INFO] x_context: {x_context.shape}, y_context:{y_context.shape}, x_target:{x_target.shape}, y_target:{y_target.shape}')
+            # upload to gpu
+            context_x = context_x.to(self.device)
+            context_y = context_y.to(self.device)
+            target_x = target_x.to(self.device)
+            target_y = target_y.to(self.device)
+            query = (context_x, context_y, target_x)
             
-            # send to gpu
-            x_context = x_context.to(self.device)
-            y_context = y_context.to(self.device)
-            x_target = x_target.to(self.device)
-            y_target = y_target.to(self.device)
-
-            # forward pass
-            mu, sigma, log_p, kl, loss = self.model(x_context, y_context, x_target, y_target)
+            # training
+            # ** need to iterate for performance
+            t_iter = tqdm(range(n_iter), total=n_iter)
+            for iter in t_iter:
+                # set model and optimizer
+                self.model.train()
+                self.adjust_learning_rate(init_lr=self.lr, optimizer=self.optimizer, step_num=train_epoch+1)
+                self.optimizer.zero_grad()
+                
+                context_mu, logits, p_y_pred, q_target, q_context, loss = self.model(query, target_y)
+                
+                try:
+                    loss.backward()
+                    self.optimizer.step()
+                    epoch_loss += loss.item()
+                except ValueError as ve:
+                    print('[ERROR] loss is None...')
+                
+                t_iter.set_description('iter: %d/%d / loss: %.f' % (iter, n_iter,epoch_loss/int(iter+1)))
+                # print('  loss:',loss.item())
+            
             # self.writer.add_scalar(f"Loss/train_NP_{cfg['train']['num_samples']}_samples_fitNP", loss.item(), train_epoch)
-            
-            epoch_loss += -loss
-            epoch_loss = epoch_loss.mean()
-            epoch_loss.backward(retain_graph=True)
-            self.optimizer.step()
-            
-            if (train_epoch+1) % (self.epochs//self.DISPLAY_FOR_EVERY) == 0:
-                print('[INFO] train_epoch: {}/{}, \033[94m loss: {} \033[0m'.format(train_epoch+1, self.epochs, epoch_loss.item()))
         
-        
-        save_ckpt(self.model, self.optimizer, True, chip, iter)
+        # save_ckpt(self.model, self.optimizer, True, chip, iter)
 
-        info_dict['fopt'] = epoch_loss.item()
+        # info_dict['fopt'] = epoch_loss.item()
         return info_dict
     
+        
     def adjust_learning_rate(self, init_lr, optimizer, step_num, warmup_step=4000):
         lr = init_lr * warmup_step**0.5 * min(step_num * warmup_step**-1.5, step_num**-0.5)
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
     
-    def initialize_model(self, cfg, model_type, train_X, train_Y):
+    def initialize_model(self, cfg, model_type, train_X, train_Y, device):
         model = None
         mll = None
         if model_type == 'NP':
-            model = NeuralProcesses(cfg)
-        elif model_type == 'ANP':
-            model = AttentiveNeuralProcesses(cfg)
+            model = NeuralProcesses(cfg, device)
+        # elif model_type == 'ANP':
+        #     model = AttentiveNeuralProcesses(cfg)
         elif self.model_type == 'GP':
             model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
             model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))

@@ -90,7 +90,7 @@ set device, suppress warnings, set seed value
 '''
 def set_global_params():    
     # use GPU if available
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'); print('Running on:',str(device).upper())
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'); 
 
     # suppress runtime warnings
     warnings.filterwarnings('ignore', category=BadInitialCandidatesWarning)

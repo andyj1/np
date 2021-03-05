@@ -1,128 +1,150 @@
-#!/usr/bin/env python3
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
 
-import sys
-from utils.utils import checkParamIsSentToCuda
-
-import torch
+from torch._C import device
 import torch.nn as nn
-import torch.nn.functional as F
+import torch
 
-class Linear(nn.Module):
-    """
-    from: https://github.com/MIT-Omnipush/omnipush-metalearning-baselines
-    Linear Module
-    """
-    def __init__(self, in_dim, out_dim, bias=True, w_init='linear'):
-        """
-        :param in_dim: dimension of input
-        :param out_dim: dimension of output
-        :param bias: boolean. if True, bias is included.
-        :param w_init: str. weight inits with xavier initialization.
-        """
-        super(Linear, self).__init__()
-        self.linear_layer = nn.Linear(in_dim, out_dim, bias=bias)
+import utils
+import utils.np_utils as np_utils
 
-        nn.init.xavier_uniform_(
-            self.linear_layer.weight,
-            gain=nn.init.calculate_gain(w_init))
+def make_layer(input_dim, output_dim):
+    return nn.Sequential(
+                # linear layer expects [batch_size, n_features]
+                nn.Linear(input_dim, output_dim),
+                nn.BatchNorm1d(output_dim), # requires number of points in the input tensor to be > 1
+                nn.ReLU(inplace=True),
+            )
+    # simpler alternative
+    # return nn.Linear(input_dim, output_dim)
 
-    def forward(self, x):
-        return self.linear_layer(x)
-
-class DeterministicEncoder(nn.Module):
-    """
-    (x,y) --> aggregated representation r
-    """
-    def __init__(self, x_dim, y_dim, r_dim):
-        super(DeterministicEncoder, self).__init__()
- 
-        self.fc1 = nn.Linear(x_dim + y_dim, 8)
-        self.fc2 = nn.Linear(8, 16)
-        self.fc3 = nn.Linear(16, r_dim)
-
-    def aggregate(self, r_i):
-        return torch.mean(r_i, dim=0)
+# encoder: x, y --> r
+class Encoder(nn.Module):
+    def __init__(self, x_dim, y_dim, r_dim, h_dim):
+        super(Encoder, self).__init__()
         
+        self.input_dim = x_dim + y_dim
+        self.hidden_dim = h_dim
+        self.output_dim = r_dim
+        
+        self.layers = nn.Sequential(
+                make_layer(self.input_dim, self.hidden_dim),
+                make_layer(self.hidden_dim, self.hidden_dim),
+                # nn.Linear(self.hidden_dim, self.output_dim),
+                make_layer(self.hidden_dim, self.output_dim),
+                )
+   
     def forward(self, x, y):
+        batch_size, num_points, _ = x.size() # [batch_size, num_points, 1]
         
-        x = x.squeeze(0)
-        y = y.squeeze(0)
-        r = torch.cat([x, y], dim=1)
+        input = torch.cat((x, y), dim=-1)
+        # flatten
+        input_flattened = input.view(batch_size * num_points, self.input_dim)
+        r = self.layers(input_flattened)
+        # unflatten
+        r = r.view(batch_size, num_points, self.output_dim)
+        
+        # print('[ENCODER] encoder_input:', input.shape)
+        # print('[ENCODER] encoder_output:', r.shape)
+        return r 
+
+# private class
+class _Aggregator(nn.Module):
+    '''
+    representation r --> latent z
+    '''
+    def __init__(self, r_dim, h_dim, z_dim):
+        super(_Aggregator, self).__init__()
+        
+        self.input_dim = r_dim
+        self.hidden_dim = h_dim
+        self.output_dim = z_dim
+        
+        self.layers = nn.Sequential(
+                        nn.Linear(self.input_dim, self.hidden_dim),
+                        nn.LeakyReLU(),
+                        nn.Linear(self.hidden_dim, self.output_dim),
+                        )
     
-        r = F.relu(self.fc1(r))
-        r = F.relu(self.fc2(r))
-        r = self.fc3(r)
-
-        # aggregate r
-        r_aggregated = self.aggregate(r)
-        
-        return r_aggregated
-
-class LatentEncoder(nn.Module):
-    """
-    aggregated representation --> latent variable z
-    """
-    def __init__(self, r_dim, z_dim):
-        super(LatentEncoder, self).__init__()
-        self.r_dim = r_dim
-        self.z_dim = z_dim
-        self.fc_mu = nn.Linear(r_dim, z_dim)
-        self.fc_sigma = nn.Linear(r_dim, z_dim)
+    def mean_aggregate(self, r):
+        return r.mean(dim=1)
     
     def forward(self, r):
-        # print('r shape:',r.shape)
-        # print('r_dim:', self.r_dim, 'z_dim:', self.z_dim)
-        # print('r->z dim fc mu shape:',self.fc_mu(r).shape)
+        r = self.mean_aggregate(r)
+        z = self.layers(r)
+        return z
+
+class LatentEncoder(nn.Module):
+    '''
+    representation r --> latent vector z (distribution, mu, sigma)
+    - invokes Aggregator to mean aggregate and encode representation into latent vecto
+    - q ( z | x_context, y_context )
+    '''
+    def __init__(self, r_dim=400, z_dim=1, h_dim=400):
+        super(LatentEncoder, self).__init__()
         
-        # print('fc sigma shape:',self.fc_sigma(r).shape)
-        # print('softplus shape:',F.softplus(self.fc_sigma(r)).shape)
-        mu, sigma = self.fc_mu(r), F.softplus(self.fc_sigma(r))
-        # print('[Latent Encoder] mu:', mu.shape, 'sigma:', sigma.shape)
-        return mu, sigma
+        self.input_dim = r_dim
+        self.hidden_dim = h_dim
+        self.output_dim = z_dim
         
+        self.mean_aggregater = _Aggregator(r_dim=self.input_dim, h_dim=self.hidden_dim, z_dim=self.output_dim)
+        self.variance_aggregator = _Aggregator(r_dim=self.input_dim, h_dim=self.hidden_dim, z_dim=self.output_dim)
+        
+    def forward(self, encoder_output, sample=False):
+        
+        mu = self.mean_aggregater(encoder_output)
+        logvar = self.variance_aggregator(encoder_output) 
+        sigma = np_utils.logvar_to_std(logvar)
+        # print('[z ENCODER] [AGGREGATE] z mu:', mu.shape, '/ sigma:', sigma.shape)
+        
+        latent_dist = torch.distributions.normal.Normal(mu, sigma)
+        if sample:
+            z_samples = latent_dist.rsample()
+            return latent_dist, z_samples, mu, sigma
+        # mu, sigma: [batch_size, z_dim
+        return latent_dist, mu, sigma
 class Decoder(nn.Module):
-    """
-    target x and latent variable z --> posterior prediction p(f(x) | x,z)
-    """
-    def __init__(self, x_dim, y_dim, z_dim):
+    '''
+    x, latent representation z --> y (distribution, mu, sigma)
+    '''
+    def __init__(self, x_dim, y_dim, z_dim, h_dim):
         super(Decoder, self).__init__()
         
-        self.fc1 = nn.Linear(x_dim + z_dim, 32)
-        self.fc2 = nn.Linear(32, 32)
-        self.fc3 = nn.Linear(32, 32)
+        self.input_dim = x_dim + z_dim
+        self.hidden_dim = h_dim
+        self.output_dim = y_dim * 2 # mu, sigma
         
-        self.fc_mu = nn.Linear(32, y_dim)
-        self.fc_sigma = nn.Linear(32, y_dim)
+        self.xr_to_hidden = nn.Sequential(
+                                make_layer(self.input_dim, self.hidden_dim),
+                                make_layer(self.hidden_dim, self.hidden_dim),
+                                make_layer(self.hidden_dim, self.hidden_dim),
+                                make_layer(self.hidden_dim, self.hidden_dim),
+                                nn.Linear(self.hidden_dim, self.output_dim)
+                            )
     
-    def forward(self, x, z):
-        # Concatenate to a tensor of shape [len(x), len(z), x_dim + z_dim]
-        '''
-        [1] x shape: torch.Size([784, 2])
-        [2] x shape: torch.Size([784, 10, 2])
-        [3] z shape: torch.Size([10, 5])
-        [4] z shape: torch.Size([784, 10, 5])
-        [5] y shape: torch.Size([784, 10, 7])
-        '''
-        # num_target (24*24=784)
-        # number of z_samples (elbo_samples = z_dim*2)
+    def forward(self, x, latent):
+        # latent: [batch_size, z_dim]
+        # x: [batch_size, context_size, dim]
         
-        # print('[1] orig x shape:', x.shape) # [batch_size, num_target, x_dim]
+        # make x, z have dimensions x+z dim such as (batch_size, num_points, x_dim + z_dim)
+        batch_size, num_x, _ = x.shape
+        latent = latent.unsqueeze(1).repeat(1, num_x, 1)
         
-        x = x.expand(z.shape[0], -1, -1).transpose(0, 1)
-        # print('[2] x shape:', x.shape) # [num_target, z_dim*2, x_dim]
-        # print('[3] orig z shape:',z.shape) # [z_dim*2, num_target]
+        xz_input = torch.cat((x, latent), dim=-1)
+        # flatten
+        xz_input_flattened = xz_input.view(batch_size * num_x, self.input_dim)
+        hidden = self.xr_to_hidden(xz_input_flattened)
+        # unflatten
+        hidden = hidden.view(batch_size, num_x, self.output_dim)
         
-        z = z.unsqueeze(0).expand(x.shape[0], -1, -1)
-        # print('[4] z shape:',z.shape) # [num_target, z_dim*2, num_target]
+        # pass through fully connected layer for mean and standard deviation
+        # mu, sigma: (784, 1)
+        mu, logvar = torch.split(hidden, split_size_or_sections=1, dim=2)        
+        sigma = np_utils.logvar_to_std(logvar)
         
-        y = torch.cat([x, z], dim=-1)
-        # print('[4] y shape:', y.shape) # [num_target, z_dim*2, x_dim+num_target]
-        
-        y = F.relu(self.fc1(y))
-        y = F.relu(self.fc2(y))
-        y = F.relu(self.fc3(y))
-        
-        mu, sigma = self.fc_mu(y), F.softplus(self.fc_sigma(y))
-        dist = torch.distributions.Normal(mu, sigma)
-        
-        return dist, mu, sigma 
+        # device
+        mu = mu.cpu()
+        sigma = sigma.cpu()
+                
+        return mu, sigma
+    

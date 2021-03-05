@@ -7,122 +7,123 @@ import torch
 import torch.nn as nn
 import utils.np_utils as np_utils
 from torch.nn import functional as F
-from NPModels.np_modules import Decoder, DeterministicEncoder, LatentEncoder
+from NPModels import np_modules as np_modules
+
+# color codes for text in UNIX shell
+CRED    = '\033[91m'
+CGREEN  = '\033[92m'
+CCYAN   = '\033[93m'
+CBLUE   = '\033[94m'
+CEND    = '\033[0m'
 
 class NP(nn.Module):
-    def __init__(self, cfg):
+    def __init__(self, cfg, device):
         super(NP, self).__init__()
         
-        self.x_dim = cfg['np']['input_dim']  # x
-        self.y_dim = cfg['np']['output_dim'] # y
-        self.r_dim = cfg['np']['repr_dim']   # r
-        self.z_dim = cfg['np']['latent_dim'] # z
+        self.x_dim = cfg['np']['x_dim']
+        self.y_dim = cfg['np']['y_dim']
+        self.r_dim = cfg['np']['r_dim']
+        self.z_dim = cfg['np']['z_dim']
+        self.h_dim = cfg['np']['h_dim']
 
-        self.representation_encoder = DeterministicEncoder(self.x_dim, self.y_dim, self.r_dim)
-        self.latent_encoder = LatentEncoder(self.r_dim, self.z_dim)
-        self.decoder = Decoder(self.x_dim, self.y_dim, self.z_dim)
-        
+        self.encoder = np_modules.Encoder(x_dim=self.x_dim, y_dim=self.y_dim, r_dim=self.r_dim, h_dim=self.h_dim)
+        self.latent_encoder = np_modules.LatentEncoder(r_dim=self.r_dim, z_dim=self.z_dim, h_dim=self.h_dim)
+        self.decoder = np_modules.Decoder(x_dim=self.x_dim, y_dim=self.y_dim, z_dim=self.z_dim, h_dim=self.h_dim)
+
         self.BCELoss = nn.BCELoss(reduction='mean')
-        self.num_outputs = self.y_dim
         
-        self.r = None
-        self.z = None
+        self.z_samples = None
+        self.device = device
         
         self.std_normal = torch.distributions.Normal(0.0, 1.0)
+        self.num_outputs = self.y_dim # for botorch dependency
         self.elbo_samples = int(self.z_dim * 2)
 
-    def forward(self, x_context, y_context, x_target, y_target=None):
-        
-        # add batch size dimension at 0
-        x = torch.cat([x_context, x_target], dim=0)
-        y = torch.cat([y_context, y_target], dim=0)
-        x_context = x_context.unsqueeze(0)
-        y_context = y_context.unsqueeze(0)
-        x_target = x_target.unsqueeze(0)
-        y_target = y_target.unsqueeze(0)
-        
-        batch_size, num_context, x_dim = x_context.size()
-        _, num_target, _ = x_target.size()
-        _, _, y_dim = y_context.size()
+    def forward(self, query, target_y=None):
+        context_x, context_y, target_x = query
+        context_x = context_x.unsqueeze(0)
+        context_y = context_y.unsqueeze(0)
+        target_x = target_x.unsqueeze(0)
+        if target_y is not None:
+            target_y = target_y.unsqueeze(0)
 
-        # training mode
-        if y_target is not None:
-            # q (z | x, y)
-            r_all = self.representation_encoder(x, y)
-            mu_all, sigma_all = self.latent_encoder(r_all)
+        if self.training and target_y is not None:
+            all_x = torch.cat((context_x, target_x), dim=1)
+            all_y = torch.cat((context_y, target_y), dim=1)    
+        # print('[DATA] context:',context_x.shape, context_y.shape, 'target:', target_x.shape, target_y.shape)
+        # [num_samples, context_size, dim]
+        
+        batch_size, num_targets, x_dim = target_x.shape
+        _, _, y_dim = context_y.shape
+        _, num_contexts, _ = context_x.shape
+        
+        # latent encoding from contexts
+        context_repr = self.encoder(context_x, context_y)
+        prior, context_mu, context_sigma = self.latent_encoder(context_repr)
+        
+        ''' sample z (latent representation) '''
+        # train
+        if self.training and target_y is not None:
+            all_repr = self.encoder(all_x, all_y)
+            posterior, all_mu, all_sigma = self.latent_encoder(all_repr)
             
-            # q (z | x_context, y_context)
-            r_context = self.representation_encoder(x_context, y_context)
-            mu_context, sigma_context = self.latent_encoder(r_context)
+            # set distributions for kl divegence ( target (posterior) || context (prior) )
+            q_target = posterior
+            q_context = prior
             
-            # kl divergence
-            posterior = torch.distributions.normal.Normal(loc=mu_all, scale=sigma_all)
-            prior = torch.distributions.normal.Normal(loc=mu_context, scale=sigma_context)
-            kl = np_utils.kl_div(posterior, prior)
+            # sample from encoded distribution using reparam trick
+            z_samples = q_target.rsample() # sampled from context+target encoded vector
+        # test
+        elif not self.training and target_y is None:
+            # set distributions accordingly
+            q_target = None
+            q_context = prior
             
-            # estimate the log-likelihood part of the ELBO by sampling z from s_c
-            sc = torch.distributions.normal.Normal(mu_all, sigma_all)
-            z_sample = sc.sample((self.elbo_samples,))
-            # z_sample = z_sample.unsqueeze(1).expand(-1, num_target, -1)    
+            # sample from encoded distribution using reparam tricks
+            z_samples = q_context.rsample()
             
-            dist_target, mu_target, sigma_target = self.decoder(x_target, z_sample)
-            log_p = np_utils.log_likelihood(mu_target, sigma_target, y_target)
-            
-            # print('kl:',kl, 'log_p:',log_p)
-            
-            loss = log_p - kl
-        '''
-        # testing mode: not explicitly called; called within acquisition function: optimize()
+            # alternative to sample() method
+            # z = torch.rand_like(std) * std + mean
+        
+        # store z samples for acquistion
+        self.z_samples = z_samples
+        
+        ''' decode '''
+        # generation (context only)
+        # mu, sigma dimension: 1 
+        context_pred_mu, context_pred_sigma = self.decoder(context_x, z_samples)
+        context_pred_logits = np_utils.logits_from_pred_mu(context_pred_mu, batch_size, self.device)
+        
+        target_pred_mu, target_pred_sigma = self.decoder(target_x, z_samples)
+        target_pred_logits = np_utils.logits_from_pred_mu(target_pred_mu, batch_size, self.device)
+        
+        logits = {}        
+        logits.update({'context': context_pred_logits, 'target': target_pred_logits})
+        
+        # distribution for the predicted/generated target parameters    
+        p_y_pred = torch.distributions.normal.Normal(target_pred_mu, target_pred_sigma)
+        
+        ''' set distributions and compute loss '''
+        if self.training:
+            # loss about the distributions from batch images
+            loss = np_utils.compute_loss(p_y_pred, target_y, q_target, q_context, logits['target'])
         else:
-            # q (z | x_context, y_context)
-            r_context = self.representation_encoder(x_context, y_context)
-            mu_context, sigma_context = self.latent_encoder(r_context)
-            
-            # prior distribution for z
-            sc = torch.distributions.Normal(mu_context, sigma_context)
-            z_sample = sc.sample()
-            
-            # reparameterize z for backpropagation through mu and sigma
-            z_sample = np_utils.reparametrize(z_sample, num_target)
-            
-            print('[ELBO] x target shape:',x_target.shape, 'z shape:',z_sample.shape)
-            # conditional decoder for all targets
-            dist_target, mu_target, sigma_target = self.decoder(x_target, z_sample)
-            
-            log_p = np_utils.log_likelihood(mu_target, sigma_target, x_target)
-            
-            kl = None
             loss = None
-        '''
-        # update r and z for the model
-        self.x_context = x_context
-        self.y_context = y_context
-        self.z_sample = z_sample
-        self.r = r_context
-        self.sc = sc
-         
-        return mu_target, sigma_target, dist_target, kl, loss
+        
+        return context_mu, logits, p_y_pred, q_target, q_context, loss    
 
     # posterior generation assuming context x and y already formed r and z
     # returns single-output mvn Posterior class -> 'from botorch.posteriors.posterior import Posterior'
     # this is called in analytic_np - base class for the acquisition functions
-    def make_np_posterior(self, x_target): # -> Posterior
-        x_target = x_target.permute(1,0,2)
-        self.decoder.eval()
+    def make_np_posterior(self, target_x): # -> Posterior
+        # target_x needs to be of [batch_size, num_samples, dim]
         
-        # q (z | x_context, y_context)
-        self.r_context = self.representation_encoder(self.x_context, self.y_context)
-        mu_context, sigma_context = self.latent_encoder(self.r_context)
-
-        # since conditional prior is intractable,
-        # reparameterize z for backpropagation through mu and sigma
-        z = self.std_normal.sample() * sigma_context + mu_context
-        self.z = z.unsqueeze(0)
-        
-        # print('[FORWARD] x target shape:',x_target.shape, 'z shape:',self.z_sample.shape)
-        
-        # conditional decoder for all targets
-        dist_target, mu_target, sigma_target = self.decoder(x_target, self.z)
-        # print('mu_target:',mu_target.shape,'sigma_target:',sigma_target.shape)
-        return dist_target
+        # test mode
+        # q (z | context_x, context_y)
+        # given z samples from prior, get q ( x | z)
+        print('z:', self.z_samples.shape, '/ target x:',target_x.shape)
+        pred_mu, pred_sigma = self.decoder(target_x.to(self.device), self.z_samples)
+        dist = torch.distributions.normal.Normal(pred_mu, pred_sigma)
+        print('mu_target:',pred_mu.shape,'sigma_target:',pred_sigma.shape)
+        return dist
         

@@ -70,6 +70,9 @@ class AnalyticAcquisitionFunction(AcquisitionFunction, ABC):
             posterior can be single-output even if the underlying model is a
             multi-output model.
         """
+        # manipulate shape
+        print(f'[analytic_np -> _get_posterior] input shape:', X.shape)
+        
         posterior = self.model.make_np_posterior(X)
         if self.objective is not None:
             # Unlike MCAcquisitionObjective (which transform samples), this

@@ -1,39 +1,42 @@
 acquisition:        # by default, it uses multi-start optimization
   option: 1         # acquisition function type: [1: UCB, 2: EI, 3: qEI, ...]
   q: 1              # smallest number of candidates to be considered jointly; q=1 for single-outcome
-  bounds: 120       # 2xd tensor of lower and upper bounds for each column of X
+  bounds: 5       # 2xd tensor of lower and upper bounds for each column of X
   beta: 0.2         # the smaller value, the more exploitative acquisition function becomes (UCB)
   best_f: 0.1
 
-  num_restarts: 10  # number of starting points for multi-start acquisition function
-  raw_samples: 10   # number of samples for initialization
+  num_restarts: 1  # number of starting points for multi-start acquisition function
+  raw_samples: 1   # number of samples for initialization
 
 train:
   optimizer: 'SGD' # must be in torch.optim ['Adam', 'SGD']
   lr: 0.001
-  num_iter: 50
-  num_epoch: 100
+  num_iter: 50    # number of sampling a new pair of candidates
+  num_epoch: 1
   display_for_every: 5 # number of lines of training state results printed
-  num_samples: 1000
+  num_samples: 200
 
 # models
-anp:
-  input_dim: 2 # context_x: 2, context_y: 1
-  output_dim: 1
-  hidden_dim: 128
-  # num_context:(empty) # must be ${train.num_samples} - ${acquisition.num_restarts or raw_samples}
+# anp:
+#   input_dim: 2 # context_x: 2, context_y: 1
+#   output_dim: 1
+#   hidden_dim: 128
+#   num_context: 100
 
 np:
-  input_dim: 2  # x
-  output_dim: 1 # y
-  repr_dim: 32  # r
-  latent_dim: 10 # z
+  x_dim: 2
+  y_dim: 1
+  r_dim: 256
+  z_dim: 256
+  h_dim: 512
+  num_context: 50
   # num_context: (empty) # must be ${train.num_samples} - ${acquisition.num_restarts or raw_samples}
+  n_iter: 10
 
 # data
 toy:
   mu: 0
-  sigma: 120
+  sigma: 5
 
 MOM4:
   parttype: R1005 # [R0402, R0603, R1005
