@@ -274,8 +274,7 @@ def optimize_acqf_NP(
         >>>     qEI, bounds, 3, 15, 256, sequential=True
         >>> )
 
-    """
-    
+    """    
     if sequential and q > 1:
         if not return_best_only:
             raise NotImplementedError(

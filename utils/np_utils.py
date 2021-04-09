@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 
 import os
+import sys
 
 import numpy as np
 import torch
 from torch.distributions.kl import kl_divergence
+
+# for kullback-leibler divergence computation
+sys.setrecursionlimit(1500)
+
+CRED    = '\033[91m'
+CBLUE   = '\033[94m'
+CEND    = '\033[0m'
 
 def log_likelihood(mu, sigma, target):
     target = target.squeeze(0)
@@ -46,12 +54,14 @@ def random_split_context_target(x, y, n_context):
     # x_context, x_target = train_X[context_idx], train_X[target_idx]
     # y_context, y_target = train_Y[context_idx], train_Y[target_idx]
     
-    # gpu friendly
+    # randomly select context and target indices
     indices = torch.randperm(x.shape[0])
     context_indices = indices[:n_context]
     target_indices = indices[n_context:]
-    context_x, context_y = x[context_indices], y[context_indices]
-    target_x, target_y = x[target_indices], y[target_indices]
+    
+    # split into context and target
+    context_x, context_y = x[context_indices,:], y[context_indices,:]
+    target_x, target_y = x[target_indices,:], y[target_indices,:]
     
     return context_x, context_y, target_x, target_y
 
@@ -63,10 +73,25 @@ def random_split_context_target(x, y, n_context):
 #     z_sample = z_sample.unsqueeze(1).expand(-1, num_target, -1)
 #     return z_sample
 
-def compute_loss(p_y_pred, target_y, q_target, q_context, target_pred_logits):
+# def compute_loss(p_y_pred, target_y, q_target, q_context, target_pred_logits):
+def compute_loss(p_y_pred, target_y, p, q):
+    # for images
     # bce = nn.BCELoss(reduction='mean')
-    bce_loss = torch.nn.functional.binary_cross_entropy(target_pred_logits, target_y)
-    return bce_loss
+    # bce_loss = torch.nn.functional.binary_cross_entropy(target_pred_logits, target_y)
+    
+    # for continuous (signal) data
+    log_likelihood = p_y_pred.log_prob(target_y).mean(dim=0).sum()
+    kl = torch.distributions.kl.kl_divergence(p, q).mean(dim=0).sum()
+    orig_loss = log_likelihood - kl
+    orig_loss *= -1
+    # print(' loss...')
+    # print('log likelihood:', log_likelihood, f'kl:{kl:2.9f}')
+    
+    loss = orig_loss
+    
+    # print(f' loss: {CRED}{loss.item():10.5f}{CEND} / kl: {CBLUE}{kl.item():10.5f}{CEND}')
+
+    return loss, kl
 
 # https://discuss.pytorch.org/t/vae-example-reparametrize/35843
 # logVariance = log($\sigma^2$) = 2 * log(sigma)

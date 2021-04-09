@@ -60,7 +60,7 @@ def parse_args():
     return args
 
 def create_self_alignment_model(args):
-    ''' ===== config ===== '''
+    ''' config '''
     if args.test == False:
         args.test_size = 0
     load = True if args.load_path is not None else False
@@ -95,11 +95,12 @@ def create_self_alignment_model(args):
         chip = args.chip
         df = df[df['PartType']==chip] if chip is not 'all' else df
         # X =  pd.concat([df['PRE_X'] - df['SPI_X_AVG'], df['PRE_Y'] - df['SPI_Y_AVG']], axis=1).to_numpy()
-        X = df[['PRE_L','PRE_W','SPI_L','SPI_W','SPI_VOLUME_MEAN']].to_numpy()
+        # X = df[['PRE_L','PRE_W','SPI_L','SPI_W','SPI_VOLUME_MEAN']].to_numpy()
+        X = df[['PRE_L','PRE_W']].to_numpy()
         y = df[['POST_L','POST_W']].to_numpy()
 
         ''' set result path '''
-        result_path = './reflow_oven/models'
+        result_path = './reflow_oven/models_2var'
         if not os.path.isdir(result_path):
             os.makedirs(result_path, mode=0o755, exist_ok=True)
         train_save_filename = f'{result_path}/regressor_{chip}_{args.num_trees}_trees_{args.max_depth}_deep_{regr2name[regressor_type]}.pkl'

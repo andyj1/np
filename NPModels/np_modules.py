@@ -5,14 +5,13 @@ from torch._C import device
 import torch.nn as nn
 import torch
 
-import utils
 import utils.np_utils as np_utils
 
 def make_layer(input_dim, output_dim):
     return nn.Sequential(
                 # linear layer expects [batch_size, n_features]
                 nn.Linear(input_dim, output_dim),
-                nn.BatchNorm1d(output_dim), # requires number of points in the input tensor to be > 1
+                # nn.BatchNorm1d(output_dim), # requires number of points in the input tensor to be > 1 (dim)
                 nn.ReLU(inplace=True),
             )
     # simpler alternative
@@ -123,9 +122,16 @@ class Decoder(nn.Module):
                             )
     
     def forward(self, x, latent):
-        # latent: [batch_size, z_dim]
-        # x: [batch_size, context_size, dim]
+        '''
+        :param 
+            x: [batch_size, num_x, x_dim]
+        :param
+            latent: [batch_size, z_dim]
         
+        returns 
+            mu [1, y_dim]
+            sigma [1, y_dim]
+        '''
         # make x, z have dimensions x+z dim such as (batch_size, num_points, x_dim + z_dim)
         batch_size, num_x, _ = x.shape
         latent = latent.unsqueeze(1).repeat(1, num_x, 1)
@@ -138,13 +144,8 @@ class Decoder(nn.Module):
         hidden = hidden.view(batch_size, num_x, self.output_dim)
         
         # pass through fully connected layer for mean and standard deviation
-        # mu, sigma: (784, 1)
         mu, logvar = torch.split(hidden, split_size_or_sections=1, dim=2)        
         sigma = np_utils.logvar_to_std(logvar)
-        
-        # device
-        mu = mu.cpu()
-        sigma = sigma.cpu()
-                
+                        
         return mu, sigma
     

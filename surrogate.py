@@ -21,6 +21,9 @@ from NPModels.ANP import ANP as AttentiveNeuralProcesses
 from NPModels.NP import NP as NeuralProcesses
 from utils.np_utils import random_split_context_target
 
+CRED    = '\033[91m'
+CBLUE   = '\033[94m'
+CEND    = '\033[0m'
 
 def save_ckpt(model, optimizer, np_bool, chip, iter):
     checkpoint = {'state_dict': model.state_dict(),
@@ -46,9 +49,9 @@ class SurrogateModel(object):
         
         self.epochs = epochs
         self.model_type = model_type
-        self.model, mll = self.initialize_model(cfg, self.model_type, train_X, train_Y, self.device)
         self.DISPLAY_FOR_EVERY = cfg['train']['display_for_every']
-        self.num_context = cfg[self.model_type.lower()]['num_context']
+        if self.model_type.lower() == 'np':
+            self.num_context = cfg[self.model_type.lower()]['num_context']
         
         # configure optimizer
         if cfg['train']['optimizer'] == 'Adam':
@@ -58,16 +61,16 @@ class SurrogateModel(object):
         # optimizer_cls = optim.AdamW
         # optimizer_cls = optim.SparseAdam # doesn't support dense gradients
         # self.optimizer_cls = optim.Adamax
-
-        # initialize optimizer
         self.lr = cfg['train']['lr']
-        self.optimizer = self.optimizer_cls(self.model.parameters(), lr=self.lr)
+
+        # initialize model
+        self.model, mll, self.optimizer = self.initialize_model(cfg, self.model_type, train_X, train_Y, self.device)
         
     # custom GP fitting
     def fitGP(self, train_X, train_Y, cfg, toy_bool=False, iter=0):
         chip = cfg['MOM4']['parttype']
         
-        self.model, mll = self.initialize_model(cfg, self.model_type, train_X, train_Y, self.device)
+        self.model, mll, self.optimizer = self.initialize_model(cfg, self.model_type, train_X, train_Y, self.device)
         # default wrapper tor training
         # fit_gpytorch_model(mll)
         mll.train()
@@ -121,17 +124,20 @@ class SurrogateModel(object):
     
     def fitNP(self, train_X, train_Y, cfg, toy_bool=False, iter=0):
         chip = cfg['MOM4']['parttype']
-        n_iter = cfg['np']['n_iter']
+        n_iter = cfg['np']['num_iter']
         test_for_every = cfg['train']['display_for_every']
         info_dict = {}
         
         # re-initialize a new model to train
-        self.model, _ = self.initialize_model(cfg, self.model_type, train_X, train_Y, self.device)
+        self.model, _, self.optimizer = self.initialize_model(cfg, self.model_type, train_X, train_Y, self.device)
         self.model.to(self.device)
         
         t = tqdm(range(self.epochs), total=self.epochs)
         for train_epoch in t:
-            epoch_loss = 0.
+            epoch_losses = []
+                
+            num_samples = train_X.shape[0]
+            assert num_samples > self.num_context
             
             # split data into context and target
             context_x, context_y, target_x, target_y = random_split_context_target(train_X, train_Y, self.num_context)
@@ -142,34 +148,58 @@ class SurrogateModel(object):
             context_y = context_y.to(self.device)
             target_x = target_x.to(self.device)
             target_y = target_y.to(self.device)
+                    
+            context_x = context_x.unsqueeze(0)
+            context_y = context_y.unsqueeze(0)
+            target_x = target_x.unsqueeze(0)
+            target_y = target_y.unsqueeze(0)
             query = (context_x, context_y, target_x)
+            
+            # print('context x:', context_x.shape, 'target x:', target_x.shape)
+            # print('context y:', context_y.shape, 'target y:', target_y.shape)
             
             # training
             # ** need to iterate for performance
             t_iter = tqdm(range(n_iter), total=n_iter)
             for iter in t_iter:
                 # set model and optimizer
-                self.model.train()
-                self.adjust_learning_rate(init_lr=self.lr, optimizer=self.optimizer, step_num=train_epoch+1)
                 self.optimizer.zero_grad()
+                self.model.train()
+                # self.adjust_learning_rate(init_lr=self.lr, optimizer=self.optimizer, step_num=train_epoch+1)
                 
-                context_mu, logits, p_y_pred, q_target, q_context, loss = self.model(query, target_y)
+                context_mu, logits, p_y_pred, q_target, q_context, loss, kl = self.model(query, target_y)
                 
-                try:
-                    loss.backward()
-                    self.optimizer.step()
-                    epoch_loss += loss.item()
-                except ValueError as ve:
-                    print('[ERROR] loss is None...')
+                loss.backward()
+                self.optimizer.step()
+                epoch_losses.append(loss.item())
                 
-                t_iter.set_description('iter: %d/%d / loss: %.f' % (iter, n_iter,epoch_loss/int(iter+1)))
-                # print('  loss:',loss.item())
-            
+                # update progress bar
+                # t_iter.set_description('iter: %d/%d / loss: %.f' % (iter+1, n_iter, loss.item()))
+                t_iter.set_description(f'iter: {iter+1}/{n_iter} / train loss: {CRED}{loss.item():10.5f}{CEND} / kl: {CBLUE}{kl.item():10.5f}{CEND}\n')
+                
+                ''' evaluate '''
+                # if True:
+                    # if iter % test_for_every == 0:
+                if len(epoch_losses) > 2 or len(epoch_losses) == 0:
+                    if iter % test_for_every == 0 and (epoch_losses[-1] <= epoch_losses[-2]) and (epoch_losses[-1] <= epoch_losses[-3]) \
+                        and (epoch_losses[-1] <= epoch_losses[-4]) and (epoch_losses[-1] <= epoch_losses[-5]):
+                            
+                        self.model.eval()
+                        with torch.no_grad():
+                            p_y_pred, pred_y, pred_std = self.model(query)
+                            print('\n\n')
+                            print('current training kl: %3.5f' % (kl))
+                            print(f'epoch: {train_epoch}, iter: {iter} | SAMPLE 0: target_x: ({target_x[0, 0, 0].item():3.5f},{target_x[0, 0, 1].item():3.5f}), target_y: {CBLUE}{target_y[0,0,0].item():3.5f}{CEND}, pred_y: {CRED}{pred_y[0, 0, 0].item():3.5f}{CEND}, pred_sigma: {pred_std[0, 0, 0].item():3.5f}')
+                            print(f'\t\t     | SAMPLE 1: target_x: ({target_x[0, 1, 0].item():3.5f},{target_x[0, 1, 1].item():3.5f}), target_y: {CBLUE}{target_y[0,1,0].item():3.5f}{CEND}, pred_y: {CRED}{pred_y[0, 1, 0].item():3.5f}{CEND}, pred_sigma: {pred_std[0, 1, 0].item():3.5f}')
+                            # time.sleep(1)
+                if (iter > 1000) and (epoch_losses[-1] <= epoch_losses[-2]) and (epoch_losses[-1] <= epoch_losses[-3]) \
+                        and (epoch_losses[-1] <= epoch_losses[-4]) and (epoch_losses[-1] <= epoch_losses[-5]):
+                    break
             # self.writer.add_scalar(f"Loss/train_NP_{cfg['train']['num_samples']}_samples_fitNP", loss.item(), train_epoch)
         
         # save_ckpt(self.model, self.optimizer, True, chip, iter)
 
-        # info_dict['fopt'] = epoch_loss.item()
+        info_dict['fopt'] = epoch_losses[-1]
         return info_dict
     
         
@@ -183,12 +213,13 @@ class SurrogateModel(object):
         mll = None
         if model_type == 'NP':
             model = NeuralProcesses(cfg, device)
-        # elif model_type == 'ANP':
-        #     model = AttentiveNeuralProcesses(cfg)
+        elif model_type == 'ANP':
+            model = AttentiveNeuralProcesses(cfg)
         elif self.model_type == 'GP':
             model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
             model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
             mll = ExactMarginalLogLikelihood(likelihood=model.likelihood, model=model)
             mll.to(train_X)
         
-        return model, mll
+        optimizer = self.optimizer_cls(model.parameters(), lr=self.lr)
+        return model, mll, optimizer

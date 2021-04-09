@@ -17,7 +17,7 @@ def flatten(df): # -> torch.FloatTensor
 
 '''
 getTOYdata(): generates a set of PRE data,
-              and then passes through reflow oven to get POST data
+              and then passes thzrough reflow oven to get POST data
 '''
 def getTOYdata(cfg, model):
     start_time = time.time()
@@ -47,12 +47,12 @@ def getMOM4data(cfg, data_path='./data/imputed_data.csv'):
     output_var = MOM4dict['output_var']
 
     # load data for the selected chip type
-    chip_df = getMOM4chipdata(cfg, data_path)
+    parttype = cfg['MOM4']['parttype']
+    chip_df = getMOM4chipdata(parttype, data_path) # datafrmae for the selected {chip} located at {data_path}
     
     # random sample `num_samples` number of data
     num_samples = cfg['train']['num_samples']
     sampled_chip_df = chip_df.sample(n=num_samples, random_state=42)
-
     inputs = flatten(sampled_chip_df[input_var]) # pre x only
 
     # for further manipulation such as PRE-SPI L,W, 
@@ -71,11 +71,7 @@ def getMOM4data(cfg, data_path='./data/imputed_data.csv'):
 '''
 getMOM4chipdata: retrieves dataframe for the particular chip or all chips ('chiptype')
 '''
-def getMOM4chipdata(cfg, data_path):
-    # config
-    MOM4dict = cfg['MOM4']
-    parttype = MOM4dict['parttype']
-
+def getMOM4chipdata(parttype, data_path):
     # load MOM4 dataset
     df = pd.read_csv(data_path, index_col=False).drop(['Unnamed: 0'], axis=1)
     df.reset_index(drop=True, inplace=True)

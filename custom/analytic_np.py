@@ -36,8 +36,8 @@ class AnalyticAcquisitionFunction(AcquisitionFunction, ABC):
     r"""Base class for analytic acquisition functions."""
 
     def __init__(
-        self, model: Model, objective: Optional[ScalarizedObjective] = None
-    ) -> None:
+         self, model: Model, objective: Optional[ScalarizedObjective] = None
+    ): # -> None
         r"""Base constructor for analytic acquisition functions.
 
         Args:
@@ -57,7 +57,7 @@ class AnalyticAcquisitionFunction(AcquisitionFunction, ABC):
             )
         self.objective = objective
 
-    def _get_posterior(self, X: Tensor) -> Posterior:
+    def _get_posterior(self, X: Tensor): # -> Posterior:
         r"""Compute the posterior at the input candidate set X.
 
         Applies the objective if provided.
@@ -71,7 +71,7 @@ class AnalyticAcquisitionFunction(AcquisitionFunction, ABC):
             multi-output model.
         """
         # manipulate shape
-        print(f'[analytic_np -> _get_posterior] input shape:', X.shape)
+        # print(f'[analytic_np -> _get_posterior] input shape:', X.shape)
         
         posterior = self.model.make_np_posterior(X)
         if self.objective is not None:
@@ -104,7 +104,7 @@ class UpperConfidenceBound(AnalyticAcquisitionFunction):
         beta: Union[float, Tensor],
         objective: Optional[ScalarizedObjective] = None,
         maximize: bool = True,
-    ) -> None:
+    ): # -> None:
         r"""Single-outcome Upper Confidence Bound.
 
         Args:

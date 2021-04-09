@@ -9,8 +9,6 @@ from botorch.acquisition import qExpectedImprovement
 # from botorch.acquisition.acquisition import AcquisitionFunction
 
 from botorch.sampling import IIDNormalSampler, SobolQMCNormalSampler
-
-
 class Acquisition(object):
     def __init__(self, cfg, model, device, beta=None, best_f=None, model_type='GP'):
         cfg_acq = cfg['acquisition']
@@ -39,6 +37,7 @@ class Acquisition(object):
             from custom.analytic_gp import (
                 ExpectedImprovement, UpperConfidenceBound)
 
+        # refer to 'custom/analytic_np.py' to make changes to acquisition functions
         if option == 1:
             # 1. UCF
             self.acq_fcn = UpperConfidenceBound(
