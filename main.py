@@ -136,6 +136,7 @@ def main():
     initial_train_end = time.time()
     print(f'[INFO] initial train time: {CRED} {initial_train_end-initial_train_start:.3f} sec {CEND}')
 
+    # sys.exit(0)
     
     # training loop
     fig = plt.figure()
@@ -296,7 +297,7 @@ def main():
     ax.grid(True)
     
     # save figure
-    image_save_path = f'results/{CHIP}_{MODEL}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples.png'
+    image_save_path = f'results/{CHIP}_{MODEL}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples_{time.strftime("%Y%m%d")}.png'
     fig.savefig(image_save_path)
     
     writer.flush()

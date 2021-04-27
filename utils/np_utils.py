@@ -97,12 +97,12 @@ def compute_loss(p_y_pred, target_y, p, q):
 # logVariance = log($\sigma^2$) = 2 * log(sigma)
 # logStdDev = 2 * log(sigma) / 2 = 0.5 * 2 * log(sigma) = log(sigma)
 def logvar_to_std(logvar):
-    logstd = (1/2) * logvar
-    std = torch.exp(logstd)
+    # https://jaketae.github.io/study/vae/
+    std = torch.exp((1/2) * logvar)
     
     # as per original deepmind code (in LatentEncoder)
     # used in LatentEncoder
-    std = 0.1 + 0.9 * torch.sigmoid(logvar)
+    # std = 0.1 + 0.9 * torch.sigmoid(logvar)
     
     # === reparameterization trick ===
     # "Empirical Evaluation of Neural Process Objectives" and "Attentive Neural Processes"

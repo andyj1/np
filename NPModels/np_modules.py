@@ -1,7 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from torch._C import device
 import torch.nn as nn
 import torch
 
@@ -11,7 +10,7 @@ def make_layer(input_dim, output_dim):
     return nn.Sequential(
                 # linear layer expects [batch_size, n_features]
                 nn.Linear(input_dim, output_dim),
-                # nn.BatchNorm1d(output_dim), # requires number of points in the input tensor to be > 1 (dim)
+                nn.BatchNorm1d(output_dim), # requires number of points in the input tensor to be > 1 (dim)
                 nn.ReLU(inplace=True),
             )
     # simpler alternative
@@ -118,7 +117,8 @@ class Decoder(nn.Module):
                                 make_layer(self.hidden_dim, self.hidden_dim),
                                 make_layer(self.hidden_dim, self.hidden_dim),
                                 make_layer(self.hidden_dim, self.hidden_dim),
-                                nn.Linear(self.hidden_dim, self.output_dim)
+                                # nn.Linear(self.hidden_dim, self.output_dim)
+                                make_layer(self.hidden_dim, self.output_dim)
                             )
     
     def forward(self, x, latent):

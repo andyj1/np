@@ -134,9 +134,6 @@ class UpperConfidenceBound(AnalyticAcquisitionFunction):
             design points `X`.
         """
         self.beta = self.beta.to(target_x)
-        
-        # print('[INFO] UCB forwarding... target_x:',target_x.shape)
-        
         posterior = self._get_posterior(X=target_x)
         '''
             _get_posterior from the abstract class
@@ -146,12 +143,156 @@ class UpperConfidenceBound(AnalyticAcquisitionFunction):
         # mean = posterior.mean.view(batch_shape)
         # variance = posterior.variance.view(batch_shape)
         
+        # modification
         mean = posterior.mean
-        variance = posterior.variance
-        # print('mean:',mean.shape, 'variance:',variance.shape)
+        variance = posterior.variance        
         
         delta = (self.beta.expand_as(mean) * variance).sqrt()
         if self.maximize:
             return mean + delta
         else:
             return -mean + delta
+
+
+class ExpectedImprovement(AnalyticAcquisitionFunction):
+    r"""Single-outcome Expected Improvement (analytic).
+
+    Computes classic Expected Improvement over the current best observed value,
+    using the analytic formula for a Normal posterior distribution. Unlike the
+    MC-based acquisition functions, this relies on the posterior at single test
+    point being Gaussian (and require the posterior to implement `mean` and
+    `variance` properties). Only supports the case of `q=1`. The model must be
+    single-outcome.
+
+    `EI(x) = E(max(y - best_f, 0)), y ~ f(x)`
+
+    Example:
+        >>> model = SingleTaskGP(train_X, train_Y)
+        >>> EI = ExpectedImprovement(model, best_f=0.2)
+        >>> ei = EI(test_X)
+    """
+
+    def __init__(
+        self,
+        model: Model,
+        best_f: Union[float, Tensor],
+        objective: Optional[ScalarizedObjective] = None,
+        maximize: bool = True,
+    ) -> None:
+        r"""Single-outcome Expected Improvement (analytic).
+
+        Args:
+            model: A fitted single-outcome model.
+            best_f: Either a scalar or a `b`-dim Tensor (batch mode) representing
+                the best function value observed so far (assumed noiseless).
+            objective: A ScalarizedObjective (optional).
+            maximize: If True, consider the problem a maximization problem.
+        """
+        super().__init__(model=model, objective=objective)
+        self.maximize = maximize
+        if not torch.is_tensor(best_f):
+            best_f = torch.tensor(best_f)
+        self.register_buffer("best_f", best_f)
+
+    @t_batch_mode_transform(expected_q=1)
+    def forward(self, X: Tensor): # -> Tensor:
+        r"""Evaluate Expected Improvement on the candidate set X.
+
+        Args:
+            X: A `b1 x ... bk x 1 x d`-dim batched tensor of `d`-dim design points.
+                Expected Improvement is computed for each point individually,
+                i.e., what is considered are the marginal posteriors, not the
+                joint.
+
+        Returns:
+            A `b1 x ... bk`-dim tensor of Expected Improvement values at the
+            given design points `X`.
+        """
+        self.best_f = self.best_f.to(X)
+        posterior = self._get_posterior(X=X)
+        mean = posterior.mean
+        
+        # modification
+        mean = posterior.mean
+        variance = posterior.variance        
+        
+        # deal with batch evaluation and broadcasting
+        view_shape = mean.shape[:-2] if mean.dim() >= X.dim() else X.shape[:-2]
+        mean = mean.view(view_shape)
+        sigma = variance.clamp_min(1e-9).sqrt().view(view_shape)
+        u = (mean - self.best_f.expand_as(mean)) / sigma
+        if not self.maximize:
+            u = -u
+        normal = torch.distributions.Normal(torch.zeros_like(u), torch.ones_like(u))
+        ucdf = normal.cdf(u)
+        updf = torch.exp(normal.log_prob(u))
+        ei = sigma * (updf + u * ucdf)
+        return ei
+
+class ProbabilityOfImprovement(AnalyticAcquisitionFunction):
+    r"""Single-outcome Probability of Improvement.
+
+    Probability of improvment over the current best observed value, computed
+    using the analytic formula under a Normal posterior distribution. Only
+    supports the case of q=1. Requires the posterior to be Gaussian. The model
+    must be single-outcome.
+
+    `PI(x) = P(y >= best_f), y ~ f(x)`
+
+    Example:
+        >>> model = SingleTaskGP(train_X, train_Y)
+        >>> PI = ProbabilityOfImprovement(model, best_f=0.2)
+        >>> pi = PI(test_X)
+    """
+
+    def __init__(
+        self,
+        model: Model,
+        best_f: Union[float, Tensor],
+        objective: Optional[ScalarizedObjective] = None,
+        maximize: bool = True,
+    ) -> None:
+        r"""Single-outcome analytic Probability of Improvement.
+
+        Args:
+            model: A fitted single-outcome model.
+            best_f: Either a scalar or a `b`-dim Tensor (batch mode) representing
+                the best function value observed so far (assumed noiseless).
+            objective: A ScalarizedObjective (optional).
+            maximize: If True, consider the problem a maximization problem.
+        """
+        super().__init__(mode10l=model, objective=objective)
+        self.maximize = maximize
+        if not torch.is_tensor(best_f):
+            best_f = torch.tensor(best_f)
+        self.register_buffer("best_f", best_f)
+
+    @t_batch_mode_transform(expected_q=1)
+    def forward(self, X: Tensor): # -> Tensor:
+        r"""Evaluate the Probability of Improvement on the candidate set X.
+
+        Args:
+            X: A `(b) x 1 x d`-dim Tensor of `(b)` t-batches of `d`-dim design
+                points each.
+
+        Returns:
+            A `(b)`-dim tensor of Probability of Improvement values at the given
+            design points `X`.
+        """
+        self.best_f = self.best_f.to(X)
+        posterior = self._get_posterior(X=X)
+        
+        # mean, sigma = posterior.mean, posterior.variance.sqrt()
+        
+        # modification
+        mean = posterior.mean
+        sigma = posterior.variance.sqrt()
+        
+        batch_shape = X.shape[:-2]
+        mean = posterior.mean.view(batch_shape)
+        sigma = posterior.variance.sqrt().clamp_min(1e-9).view(batch_shape)
+        u = (mean - self.best_f.expand_as(mean)) / sigma
+        if not self.maximize:
+            u = -u
+        normal = torch.distributions.Normal(torch.zeros_like(u), torch.ones_like(u))
+        return normal.cdf(u)

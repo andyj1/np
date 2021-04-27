@@ -97,8 +97,8 @@ def set_global_params():
     warnings.filterwarnings('ignore', category=RuntimeWarning)
 
     # set seed for reproducibility
-    SEED = 42
-    torch.manual_seed(SEED)
+    # SEED = 42
+    # torch.manual_seed(SEED)
     
     # sets behchmark mode in cudnn
     # benchmark mode is good whenever your input sizes for your network do not vary

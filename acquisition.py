@@ -32,7 +32,7 @@ class Acquisition(object):
         if 'ANP' in model_type:
             from custom.analytic_anp import (UpperConfidenceBound)
         elif 'NP' in model_type:
-            from custom.analytic_np import (UpperConfidenceBound)
+            from custom.analytic_np import (UpperConfidenceBound, ExpectedImprovement, ProbabilityOfImprovement)
         elif 'GP' in model_type:
             from custom.analytic_gp import (
                 ExpectedImprovement, UpperConfidenceBound)

@@ -271,13 +271,18 @@ for i in range(len(missing_sample)):
     tmp = temps[i].iloc[missing_sample[i][1],:].append(pd.Series(dtype=float), ignore_index=True)
     
     # columns to impute: float type
-    cols_to_impute = ['X','Y',                       'SPI_VOLUME1','SPI_VOLUME2',                       'SPI_X1','SPI_Y1','SPI_X2','SPI_Y2',                       'SPI_L1','SPI_W1','SPI_L2','SPI_W2',                       'SPI_L','SPI_W', #                       'SPI_R', \ # compute based on imputed SPI_L, SPI_W
+    cols_to_impute = ['X','Y',                       
+                      'SPI_VOLUME1','SPI_VOLUME2',                       
+                      'SPI_X1','SPI_Y1','SPI_X2','SPI_Y2',                       
+                      'SPI_L1','SPI_W1','SPI_L2','SPI_W2',                       
+                      'SPI_L','SPI_W', 
+                      # 'SPI_R', \ # compute based on imputed SPI_L, SPI_W
                       'PRE_X','PRE_Y','PRE_A',\
                       'PRE_L','PRE_W', \
-#                       'PRE_R', \ # compute based on imputed PRE_L, PRE_W
+                      # 'PRE_R', \ # compute based on imputed PRE_L, PRE_W
                       'POST_X','POST_Y','POST_A',\
                       'POST_L','POST_W', \
-#                       'POST_R', \ # compute based on imputed POST_L, POST_W
+                      # 'POST_R', \ # compute based on imputed POST_L, POST_W
                       'SPI_VOLUME_MEAN', 'SPI_VOLUME_DIFF', \
                       'Orient.']
     # drop CRD and PartType for imputation

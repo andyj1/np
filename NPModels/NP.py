@@ -30,15 +30,12 @@ class NP(nn.Module):
         self.latent_encoder = np_modules.LatentEncoder(r_dim=self.r_dim, z_dim=self.z_dim, h_dim=self.h_dim)
         self.decoder = np_modules.Decoder(x_dim=self.x_dim, y_dim=self.y_dim, z_dim=self.z_dim, h_dim=self.h_dim)
 
-        # self.BCELoss = nn.BCELoss(reduction='mean')
-        
-        # self.z_samples = None
         self.latent_dist = None # keep distribution to sample from across training iterations
         self.p, self.q = None, None
         self.device = device
-        
         # self.std_normal = torch.distributions.Normal(0.0, 1.0)
         # self.elbo_samples = int(self.z_dim * 2)
+        
         self.num_outputs = self.y_dim # for botorch dependency
 
     def forward(self, query, target_y=None):

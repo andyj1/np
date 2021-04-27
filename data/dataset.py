@@ -40,6 +40,7 @@ def getTOYdata(cfg, model):
 getMOM4data: returns lists of variables from random samples (count: num_samples)
 '''
 def getMOM4data(cfg, data_path='./data/imputed_data.csv'):
+    data_path = "./data_analysis/('R1005', 0)_1.csv"
     start_time = time.time()
     
     MOM4dict = cfg['MOM4']
