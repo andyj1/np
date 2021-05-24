@@ -3,7 +3,7 @@ train:
   optimizer: 'Adam' # must be in torch.optim ['Adam', 'SGD']
   lr: 0.004
   num_epoch: 1
-  num_iter: 3    # number of sampling a new pair of candidates
+  num_candidates: 20    # number of sampling a new pair of candidates
   display_for_every: 50 # number of lines of training state results printed
   num_samples: 1000
 
@@ -14,7 +14,6 @@ acquisition:        # by default, it uses multi-start optimization
   bounds: 5       # 2xd tensor of lower and upper bounds for each column of X
   beta: 0.4 # 0.2         # the smaller value, the more exploitative acquisition function becomes (UCB)
   best_f: 0.1
-
   num_restarts: 1  # number of starting points for multi-start acquisition function
   raw_samples: 1   # number of samples for initialization
 
@@ -32,15 +31,16 @@ np:
   z_dim: 128
   y_dim: 1
   num_context: 100
-  num_iter: 1500
+  num_iter: 1000
 
-# data 
+# toy data 
 toy:
   mu: 0
-  sigma: 5
+  sigma: 50
 
+# actual data
 MOM4:
-  parttype: R0402 # R0402, R0603, R1005
+  parttype: R0603 # R0402, R0603, R1005
   input_var:
     - PRE_L
     - PRE_W
@@ -51,3 +51,14 @@ MOM4:
   output_var:
     - POST_L
     - POST_W
+
+  chips:
+    R0402:
+      length: 400
+      width: 200
+    R0603:
+      length: 600
+      width: 300
+    R1005:
+      length: 1000
+      width: 500
