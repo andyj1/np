@@ -3,7 +3,7 @@ train:
   optimizer: 'Adam' # must be in torch.optim ['Adam', 'SGD']
   lr: 0.004
   num_epoch: 1
-  num_candidates: 20    # number of sampling a new pair of candidates
+  num_candidates: 100    # number of sampling a new pair of candidates
   display_for_every: 50 # number of lines of training state results printed
   num_samples: 1000
 
@@ -35,22 +35,38 @@ np:
 
 # toy data 
 toy:
-  mu: 0
-  sigma: 50
+  chip: R1005
+  num_samples: 100
 
-# actual data
-MOM4:
-  parttype: R0603 # R0402, R0603, R1005
-  input_var:
-    - PRE_L
-    - PRE_W
-    # - PRE_A
-    # - SPI_L
-    # - SPI_W
-    # - SPI_VOLUME_DIFF
-  output_var:
-    - POST_L
-    - POST_W
+  method: tension # shift, shiftPolar, tensionSimple, tension
+  # pre L,W
+  mu1: 0
+  sigma1: 50
+  mu2: 0
+  sigma2: 20
+  # pre angle
+  mu_theta: 15
+  sigma_theta: 5
+
+  # self alignment: shiftPolar
+  # position shift
+  x_offset: 20
+  x_noise: 15
+  y_offset: 20
+  y_noise: 15
+  # angular shift
+  distance: 25
+  noise: 5
+  
+  # self alignment: tensionSimple/tension
+  mu_spi1: 40
+  sigma_spi1: 10
+  mu_spi2: 20
+  sigma_spi2: 10
+  
+  # self alignment: tension
+  alpha: 0.0005
+  beta: 0.5
 
   chips:
     R0402:
@@ -62,3 +78,17 @@ MOM4:
     R1005:
       length: 1000
       width: 500
+
+# actual data
+MOM4:
+  parttype: R1005 # R0402, R0603, R1005
+  input_var:
+    - PRE_L
+    - PRE_W
+    # - PRE_A
+    # - SPI_L
+    # - SPI_W
+    # - SPI_VOLUME_DIFF
+  output_var:
+    - POST_L
+    - POST_W
