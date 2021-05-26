@@ -77,12 +77,12 @@ class SurrogateModel(object):
         
         # customize optimizer in 'fit.py' in fit_gpytorch_torch()
         # optimizer need not have a closure
-        optimizer_options = {'lr': cfg['train']['lr'], 'maxiter': cfg['train']['num_iter'], 'disp': True}
+        optimizer_options = {'lr': cfg['train']['lr'], 'maxiter': cfg['train']['num_candidates'], 'disp': True}
         
         ''' define custom optimizer using optimizer class: "self.optimizer_cls" '''
         # self.optimizer = self.optimizer_cls(model.parameters())
         self.optimizer = None # if None, defines a new optimizer within fit_gpytorch_torch
-        
+
         mll, info_dict, self.optimizer = fit_gpytorch_torch(mll=mll, \
                                             optimizer_cls=self.optimizer_cls, \
                                             options=optimizer_options, \
@@ -125,7 +125,7 @@ class SurrogateModel(object):
     def fitNP(self, train_X, train_Y, cfg, toy_bool=False, iter=0):
         chip = cfg['MOM4']['parttype']
         n_iter = cfg['np']['num_iter']
-        test_for_every = cfg['train']['display_for_every']
+        self.DISPLAY_FOR_EVERY = cfg['train']['display_for_every']
         info_dict = {}
         
         # re-initialize a new model to train
@@ -163,38 +163,39 @@ class SurrogateModel(object):
             t_iter = tqdm(range(n_iter), total=n_iter)
             for iter in t_iter:
                 # set model and optimizer
-                self.optimizer.zero_grad()
                 self.model.train()
                 # self.adjust_learning_rate(init_lr=self.lr, optimizer=self.optimizer, step_num=train_epoch+1)
                 
                 context_mu, logits, p_y_pred, q_target, q_context, loss, kl = self.model(query, target_y)
                 
+                self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
                 epoch_losses.append(loss.item())
                 
-                # update progress bar
-                # t_iter.set_description('iter: %d/%d / loss: %.f' % (iter+1, n_iter, loss.item()))
-                t_iter.set_description(f'iter: {iter+1}/{n_iter} / train loss: {CRED}{loss.item():10.5f}{CEND} / kl: {CBLUE}{kl.item():10.5f}{CEND}\n')
+                # update progress bar for training
+                # t_iter.set_description(f'iter: {iter+1}/{n_iter} / train loss: {CRED}{loss.item():10.5f}{CEND} / kl: {CBLUE}{kl.item():10.5f}{CEND}\n')
                 
                 ''' evaluate '''
                 # if True:
-                    # if iter % test_for_every == 0:
-                if len(epoch_losses) > 2 or len(epoch_losses) == 0:
-                    if iter % test_for_every == 0 and (epoch_losses[-1] <= epoch_losses[-2]) and (epoch_losses[-1] <= epoch_losses[-3]) \
-                        and (epoch_losses[-1] <= epoch_losses[-4]) and (epoch_losses[-1] <= epoch_losses[-5]):
+                    # if iter % self.DISPLAY_FOR_EVERY == 0:
+                
+                # if len(epoch_losses) > 2 or len(epoch_losses) == 0:
+                #     if iter % self.DISPLAY_FOR_EVERY == 0 and (epoch_losses[-1] <= epoch_losses[-2]) and (epoch_losses[-1] <= epoch_losses[-3]) \
+                #         and (epoch_losses[-1] <= epoch_losses[-4]) and (epoch_losses[-1] <= epoch_losses[-5]):
                             
-                        self.model.eval()
-                        with torch.no_grad():
-                            p_y_pred, pred_y, pred_std = self.model(query)
-                            print('\n\n')
-                            print('current training kl: %3.5f' % (kl))
-                            print(f'epoch: {train_epoch}, iter: {iter} | SAMPLE 0: target_x: ({target_x[0, 0, 0].item():3.5f},{target_x[0, 0, 1].item():3.5f}), target_y: {CBLUE}{target_y[0,0,0].item():3.5f}{CEND}, pred_y: {CRED}{pred_y[0, 0, 0].item():3.5f}{CEND}, pred_sigma: {pred_std[0, 0, 0].item():3.5f}')
-                            print(f'\t\t     | SAMPLE 1: target_x: ({target_x[0, 1, 0].item():3.5f},{target_x[0, 1, 1].item():3.5f}), target_y: {CBLUE}{target_y[0,1,0].item():3.5f}{CEND}, pred_y: {CRED}{pred_y[0, 1, 0].item():3.5f}{CEND}, pred_sigma: {pred_std[0, 1, 0].item():3.5f}')
-                            # time.sleep(1)
-                if (iter > 1000) and (epoch_losses[-1] <= epoch_losses[-2]) and (epoch_losses[-1] <= epoch_losses[-3]) \
-                        and (epoch_losses[-1] <= epoch_losses[-4]) and (epoch_losses[-1] <= epoch_losses[-5]):
-                    break
+                #         self.model.eval()
+                #         with torch.no_grad():
+                #             p_y_pred, pred_y, pred_std = self.model(query)
+                #             print('\n\n')
+                #             print('current training kl: %3.5f' % (kl))
+                #             print(f'epoch: {train_epoch}, iter: {iter} | SAMPLE 0: target_x: ({target_x[0, 0, 0].item():3.5f},{target_x[0, 0, 1].item():3.5f}), target_y: {CBLUE}{target_y[0,0,0].item():3.5f}{CEND}, pred_y: {CRED}{pred_y[0, 0, 0].item():3.5f}{CEND}, pred_sigma: {pred_std[0, 0, 0].item():3.5f}')
+                #             print(f'\t\t     | SAMPLE 1: target_x: ({target_x[0, 1, 0].item():3.5f},{target_x[0, 1, 1].item():3.5f}), target_y: {CBLUE}{target_y[0,1,0].item():3.5f}{CEND}, pred_y: {CRED}{pred_y[0, 1, 0].item():3.5f}{CEND}, pred_sigma: {pred_std[0, 1, 0].item():3.5f}')
+                #             # time.sleep(1)
+                # if (iter > 1000) and (epoch_losses[-1] <= epoch_losses[-2]) and (epoch_losses[-1] <= epoch_losses[-3]) \
+                #         and (epoch_losses[-1] <= epoch_losses[-4]) and (epoch_losses[-1] <= epoch_losses[-5]):
+                #     break
+
             # self.writer.add_scalar(f"Loss/train_NP_{cfg['train']['num_samples']}_samples_fitNP", loss.item(), train_epoch)
         
         # save_ckpt(self.model, self.optimizer, True, chip, iter)

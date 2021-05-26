@@ -5,16 +5,14 @@ import os
 import pathlib
 import sys
 
+import joblib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
-import joblib
 import torch
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.multioutput import MultiOutputRegressor
-
 
 '''
 get MOM4 data by chip
@@ -144,7 +142,7 @@ def create_self_alignment_model(args):
         regr = joblib.load(load_path)
         
     ''' test the model '''
-    if args.test_size == 0: test = False
+    if args.test_size == 0: args.test = False
     y_regressor = None
     if args.test == True:
         print('='*10,'test','='*10)
