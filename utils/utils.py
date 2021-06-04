@@ -14,49 +14,15 @@ from gpytorch import settings
 from torch.distributions.kl import kl_divergence
 import pandas as pd
 
-def parse():
-    parse_start = time.time()
+def objective(outputs): # -> torch.FloatTensor
+    '''
+    objective function value which the surrogate model is outputting and the acquisition function is minimizing
+    '''
+    obj = lambda x, y: torch.norm(torch.FloatTensor([x, y])) # x,y are POST L, W (single sample)
     
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--toy', action='store_true', help='sets to toy dataset')
-    parser.add_argument('--load_rf', default='reflow_oven/models_2var/regressor_R1005_50_trees_100_deep_random_forest.pkl', type=str, help='path to reflow oven model')
-    parser.add_argument('--model', default='GP', type=str, help='surrogate model type')
-    parser.add_argument('--load', default=None, type=str, help='path to checkpoint [pt] file')
-    parser.add_argument('--chip', default=None, type=str, help='chip part type')
-    # parser.add_argument('--not_increment_context', default=True, action='store_false', help='increments context size over iterations, instead of target size')
-    parser.add_argument('--cholesky', default=False, action='store_true', help='sets boolean to use cholesky decomposition')
-    args = parser.parse_args()
-    
-    parse_end = time.time(); 
-    print('[INFO] parsing argumentstook: %.3f seconds' % (parse_end - parse_start))
-    return args
-
-def checkParamIsSentToCuda(args):
-    '''
-    given a list of tensors, return a list of cuda state booleans
-    '''
-    status = []
-    for i, arg in enumerate(args):
-        try:
-            status.append(arg.is_cuda)
-        except:
-            status.append(False)
-    return status
-
-def KLD_gaussian(p, q):
-    '''
-    computes Kullback-Leibler divergence between two Gaussian distributions p and q 
-    '''
-    '''
-    computes KL(p||q)
-    '''
-    return kl_divergence(p, q).mean(dim=0).sum()
-
-def switchOrient(x90, y90):
-    # switch 90 data to 0 data
-    y0 = float(x90)
-    x0 = float(-y90)
-    return x0, y0 
+    targets = torch.FloatTensor([obj(x,y) for x, y in outputs]).unsqueeze(1)
+    targets = targets.to(outputs.device)
+    return targets
 
 def loadReflowOven(args):
     '''
@@ -73,11 +39,29 @@ def loadReflowOven(args):
     time_taken = loadRFRegressor_end - loadRFRegressor_start
     return regr_multirf, time_taken
 
-def objective(x, y):
+def checkParamIsSentToCuda(args):
     '''
-    objective function value which the surrogate model is outputting and the acquisition function is minimizing
+    given a list of tensors, return a list of cuda state booleans
     '''
-    return np.array([objective(x,y) for x, y in zip(x[:], y[:])])
+    status = []
+    for i, arg in enumerate(args):
+        try:
+            status.append(arg.is_cuda)
+        except:
+            status.append(False)
+    return status
+
+def KLD_gaussian(p, q):
+    '''
+    computes Kullback-Leibler divergence from Gaussian distribution p to q 
+    '''
+    return kl_divergence(p, q).mean(dim=0).sum()
+
+def switchOrient(x90, y90):
+    # switch 90 data to 0 data
+    y0 = float(x90)
+    x0 = float(-y90)
+    return x0, y0 
 
 def set_decomposition_type(cholesky: bool):
     '''
@@ -86,45 +70,37 @@ def set_decomposition_type(cholesky: bool):
     '''
 
     '''arguments
-    1. covar_root_decomposition: decomposition using low-rank approx using the Lanczos algorithm (False -> use Cholesky)
-    
+    1. covar_root_decomposition: decomposition using low-rank approx using the Lanczos algorithm (False -> use Cholesky)    
     2. log_prob: computed using a modified conjugate gradients algorithm (False -> use Cholesky)
-    
     3. solves: computes positive-definite matrices with preconditioned conjugate gradients (False -> use Cholesky)
     '''
-    set_bool = not cholesky
     if cholesky:
-        settings.fast_computations(covar_root_decomposition=set_bool, 
-                                    log_prob=set_bool, 
-                                    solves=set_bool)
+        settings.fast_computations(covar_root_decomposition=not cholesky, 
+                                    log_prob=not cholesky, 
+                                    solves=not cholesky)
 
-def set_global_params():    
+def supress_warnings():    
     '''
     set device, suppress warnings, set seed value
     '''
-    # use GPU if available
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'); 
-
     # suppress runtime warnings
     warnings.filterwarnings('ignore', category=BadInitialCandidatesWarning)
     warnings.filterwarnings('ignore', category=RuntimeWarning)
-
+    
+def set_torch_seed(seed=42, benchmark=False):
     # set seed for reproducibility
-    # SEED = 42
-    # torch.manual_seed(SEED)
+    torch.manual_seed(seed)
     
     # sets behchmark mode in cudnn
     # benchmark mode is good whenever your input sizes for your network do not vary
     # ref: https://discuss.pytorch.org/t/what-does-torch-backends-cudnn-benchmark-do/5936
-    # torch.backends.cudnn.benchmark = True
-
-    return device
+    torch.backends.cudnn.benchmark = benchmark
 
 def clean_memory():    
     '''
     garbage collect and empty cache memory in cuda device
     '''
-    print('[INFO] garbage collect, torch emptying cache...')
+    print('[INFO] garbage collect, emptying cache...')
     gc.collect()
     torch.cuda.empty_cache()
 

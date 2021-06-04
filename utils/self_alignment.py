@@ -6,7 +6,7 @@ from utils.utils import checkParamIsSentToCuda
 # self alignment-specific tension levels by chip
 tension_level = {'R0402': (1000*500)/(400*200), 'R0603': (1000*500)/(600*300), 'R1005': (1000*500)/(1000*500)}
 
-def self_alignment(inputs, model=None, toycfg=None): # chip=None, chipname='R0402', option=1):
+def self_alignment(inputs, model=None, toycfg=None):
     '''
     self alignment simulation for toy data
 
@@ -21,17 +21,18 @@ def self_alignment(inputs, model=None, toycfg=None): # chip=None, chipname='R040
     outputs
         [post_chip, post_theta]
     '''
-
-    cuda_status = checkParamIsSentToCuda(inputs)
-    if cuda_status == [True]: inputs = inputs.detach().cpu().numpy()
     
     # if using a model for MOM4 data
     if model is not None: 
+        cuda_status = checkParamIsSentToCuda(inputs)
+        if cuda_status == [True]: inputs = inputs.detach().cpu().numpy()
         shifted_outputs = model.predict(inputs) # evaluate using the self alignment model
-        return shifted_outputs
+        return shifted_outputs, None
     
     # else, toy problem setting
     if toycfg is None: raise Exception('Please input toy configurations.')
+
+    # use toy self-alignment effect
     method = toycfg['method'] # shift / shiftPolar / tensionSimple / tension
     shifted_outputs = globals()[method](inputs, toycfg)
     return shifted_outputs, method
@@ -39,6 +40,36 @@ def self_alignment(inputs, model=None, toycfg=None): # chip=None, chipname='R040
 ''' 
     NOTE: BELOW contain 4 different self alignment demos
 '''
+def constantshift(inputs, toycfg):
+    '''
+    constant shift variables:
+        position: random normal        
+        total shift (dx, dy) = position (dx, dy)
+    return
+        [original (x,y) + total shift (dx, dy)]
+    '''
+    # input_info = ['pre_l', 'pre_w']
+    # output_info = ['post_l', 'post_w']
+
+    x_offset, x_noise, y_offset, y_noise = [dict.get(toycfg, variable) for variable in ['x_offset', 'x_noise', 'y_offset', 'y_noise']]
+    pre_chip = inputs[:, 0:2]
+    
+    # # for statistics
+    # xmax = torch.max(pre_chip[:,0])
+    # xmin = torch.min(pre_chip[:,0])
+    # ymax = torch.max(pre_chip[:,1])
+    # ymin = torch.min(pre_chip[:,1])    
+    # x_offset = ( xmax - xmin ) 
+    # y_offset = ( ymax - ymin ) 
+
+    x_offset = torch.FloatTensor([50])
+    y_offset = torch.FloatTensor([50])
+
+    post_chip = pre_chip + torch.tile(torch.FloatTensor([x_offset, y_offset]).to(inputs.device), (pre_chip.shape[0], 1))
+    
+    return post_chip
+
+
 def shift(inputs, toycfg):
     '''
     constant shift variables:

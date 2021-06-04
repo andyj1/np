@@ -14,186 +14,157 @@ from tensorboardX import SummaryWriter
 from tqdm import trange
 
 from acquisition import Acquisition
-from data.dataset import getMOM4data, getTOYdata
+from dataset import getMOM4data, getSineData, getTOYdata
 from surrogate import SurrogateModel
-from utils.utils import (checkParamIsSentToCuda, clean_memory, loadReflowOven,
-                         make_pd_series, objective, reflow_oven,
-                         set_decomposition_type, set_global_params)
+import utils.utils as utils
+from utils.parse import parse_args
+from utils import self_alignment as reflow_oven
 
 ''' global variables '''
 # color codes for text in UNIX shell
-CRED    = '\033[91m'
-CGREEN  = '\033[92m'
-CCYAN   = '\033[93m'
-CBLUE   = '\033[94m'
-CEND    = '\033[0m'
+CRED = '\033[91m'
+CGREEN = '\033[92m'
+CCYAN = '\033[93m'
+CBLUE = '\033[94m'
+CEND = '\033[0m'
 
-''' parse arguments '''
-def parse():
-    parse_start = time.time()
-    
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--toy', action='store_true', help='sets to toy dataset')
-    parser.add_argument('--load_rf', default='reflow_oven/models_2var/regressor_R1005_50_trees_100_deep_random_forest.pkl', type=str, help='path to reflow oven model')
-    parser.add_argument('--model', default='GP', type=str, help='surrogate model type')
-    parser.add_argument('--load', default=None, type=str, help='path to checkpoint [pt] file')
-    parser.add_argument('--chip', default=None, type=str, help='chip part type')
-    # parser.add_argument('--not_increment_context', default=True, action='store_false', help='increments context size over iterations, instead of target size')
-    parser.add_argument('--cholesky', default=False, action='store_true', help='sets boolean to use cholesky decomposition')
-    args = parser.parse_args()
-    
-    parse_end = time.time(); print('parsing took: %.3f seconds' % (parse_end - parse_start))
-    return args
-
-''' main function '''
 def main():
-    args = parse()
-    device = set_global_params()            # sets seed, device type, cudnn benchmark, suppresses warnings
-    print('running on:',str(device).lower())
-    set_decomposition_type(args.cholesky)   # if argument is True, then computes exact decomposition using Cholesky
-    clean_memory()                          # garbage collection and cuda clear memory cache
-    
-    # load config parameters
+    ''' preliminary setup '''
+    print('Setting up workspace environment...')
+    args = parse_args()
+    utils.supress_warnings()
+    utils.set_torch_seed(seed=42, benchmark=False)
+    utils.set_decomposition_type(args.cholesky) # if argument is True, then computes exact decomposition using Cholesky
+    utils.clean_memory()        # garbage collection and cuda clear memory cache
+
+    ''' load config parameters '''
+    print('Loading configurations...')
     cfg = yaml.load(open('config.yml', 'r'), yaml.FullLoader)
-    NUM_ITER = cfg['train']['num_iter']
+    device = torch.device(cfg['train']['device'])
+    NUM_CANDIDATES = cfg['train']['num_candidates']
     NUM_TRAIN_EPOCH = cfg['train']['num_epoch']
     NUM_SAMPLES = cfg['train']['num_samples']
-    if args.chip is None:
-        CHIP = cfg['MOM4']['parttype']
-    else:
-        CHIP = cfg['MOM4']['parttype'] = args.chip
-    MODEL = args.model.upper() # ['GP','NP','ANP']
+    MODEL = args.model.upper()  # ['GP','NP','ANP']
+    CHIP = cfg['MOM4']['parttype'] if args.chip is None else args.chip
     
-    # manipulate cfg for context and target size
+    # tensorboard summary writer
+    writer = SummaryWriter(
+        f'runs/{CHIP}_{MODEL}_{NUM_CANDIDATES}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples')
+    print('[INFO] running on:', str(device).lower())
+
+    ''' manipulate context and target sizes: discarded '''
+    if args.model.lower() in cfg.keys():
+        print(f'{CRED}num_context{CEND}:', cfg[args.model.lower()]['num_context'])
     # cfg['acquisition']['num_restarts'] = cfg['acquisition']['raw_samples']
     # if args.model.lower() in cfg.keys():
     #     cfg[args.model.lower()]['num_context'] = 0
     # cfg[args.model.lower()].update({'num_context': (cfg['train']['num_samples'] - cfg['acquisition']['num_restarts'])})
-    if args.model.lower() in cfg.keys():
-        print(f'{CRED}num_context{CEND}:', cfg[args.model.lower()]['num_context'])
-    
-    # tensorboard summary writer
-    writer = SummaryWriter(f'runs/{CHIP}_{MODEL}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples')
-    
-    # load reflow oven regressor
-    regr_multirf, elapsed_time = loadReflowOven(args)
-    print('[INFO] loading regressor model took: %.3f seconds' % elapsed_time)
-    
-    # load data
-    data_path = './data/imputed_data.csv'
-    print(f'[INFO] loading data from {data_path}', end='')
-    inputs, outputs = getTOYdata(cfg, model=regr_multirf) if args.toy else getMOM4data(cfg, data_path=data_path) # inputs: [num_samples, input_dim], outputs (POST X, Y): [num_samples, 2]
-    # objective function: to minimize the distance from POST to origin toward zero
-    targets = torch.FloatTensor([objective(x1, x2) for x1, x2 in zip(outputs[:,0], outputs[:,1])]).unsqueeze(1)
-    
-    print(f'[INFO] inputs: {inputs.shape}, outputs: {outputs.shape}, targets: {targets.shape}') # [N, input_dim], [N, 2], [N, 1]
-    
-    # stats about [inputs, targets] for the surrogate model
-    initial_input_dists = np.array([objective(x,y) for x, y in zip(inputs[:,0], inputs[:,1])])
-    initial_output_dists = np.array([objective(x,y) for x, y in zip(outputs[:,0], outputs[:,1])])
 
-    # initialize model and likelihood
-    # GP model (SingleTaskGP) requires inputs and targets at initialization
-    print(f'[INFO] loading model: {MODEL}, chip: {CHIP}', end='')
+    ''' load data: inputs: [N, num_input_dim] / outputs: [N, 2] '''
+    # regr_multirf, elapsed_time = loadReflowOven(args)
+    # print('[INFO] loading regressor model took: %.3f seconds' % elapsed_time)
+    start_time = time.time()
+    inputs, outputs = getTOYdata(cfg, model=None, device=device)  # model=regr_multirf
+    targets = utils.objective(outputs) # outputs: 2-dimensional
+    end_time = time.time()
+    print('Loading data: took %.3f seconds' % (end_time-start_time))
+    
+    print(f'[INFO] inputs: {inputs.shape}, outputs: {outputs.shape}, targets: {targets.shape}')
+
+    ''' initialize model and likelihood '''
     ITER_FROM = 0
     start_time = time.time()
-    surrogate = SurrogateModel(inputs, targets, args, cfg,
-                               writer=writer, device=device, 
-                               epochs=NUM_TRAIN_EPOCH, model_type=MODEL)
+    surrogate = SurrogateModel(inputs, targets, args, cfg, writer=writer, device=device, epochs=NUM_TRAIN_EPOCH, model_type=MODEL)
     end_time = time.time()
-    print(': took %.3f seconds' % (end_time-start_time))
-    
-    # load model is load path is provided
+    print(f'Initializing model ({MODEL}, {CHIP}): took %.3f seconds' % (end_time-start_time))
+
     if args.load is not None:
+        start_time = time.time()
         checkpoint = torch.load(args.load)
         surrogate.model.load_state_dict(checkpoint['state_dict'])
         surrogate.optimizer.load_state_dict(checkpoint['optimizer'])
         # restarts training from the last epoch (retrieved from checkpoint filename)
-        ITER_FROM = int(args.load.split('.pt')[0][-1])+1
-        print(f'[INFO] Loading checkpoint from epoch: [{ITER_FROM}]')
-    
+        ITER_FROM = int(args.load.split('.pt')[0].split('_')[-1])
+        end_time = time.time()
+        print('Loading ckpt (candidate_iter: {ITER_FROM}): took %.3f seconds' % (end_time-start_time))
     surrogate.model.to(device)
-    inputs = inputs.to(device)
-    targets = targets.to(device)
-    
-    # check if the parameter is indeed sent to cuda
-    assert [True, True, True] == checkParamIsSentToCuda([next(surrogate.model.parameters()), inputs, targets]) if device == 'cuda' else [False,False,False]
 
     # prepare folders for checkpoints
-    folders = ['ckpts','ckpts/R0402','ckpts/R0603','ckpts/R1005','ckpts/all', 'ckpts/toy']
-    for folder in folders:
-        if not os.path.isdir(folder):
-            os.makedirs(folder, exist_ok=True, mode=0o755)
+    folders = ['ckpts', 'ckpts/R0402', 'ckpts/R0603', 'ckpts/R1005', 'ckpts/all', 'ckpts/toy']
+    for folder in folders: os.makedirs(folder, exist_ok=True, mode=0o755) if not os.path.isdir(folder) else None
 
     # initial training before the acquisition loop
     optimize_np_bool = False
+    print('Training model...')
     initial_train_start = time.time()
-    if 'NP' in MODEL:
-        optimize_np_bool = True
-        info_dict = surrogate.fitNP(inputs, targets, cfg, toy_bool=args.toy)
+    if 'GP' in MODEL:
+        info_dict = surrogate.fitGP(inputs[:, 0:2], targets, cfg, toy_bool=args.toy, iter=ITER_FROM+1)
     else:
-        info_dict = surrogate.fitGP(inputs, targets, cfg, toy_bool=args.toy, iter=ITER_FROM)
+        optimize_np_bool = True
+        info_dict = surrogate.fitNP(inputs[:, 0:2], targets, cfg, toy_bool=args.toy)
     initial_train_end = time.time()
     print(f'[INFO] initial train time: {CRED} {initial_train_end-initial_train_start:.3f} sec {CEND}')
 
-    # sys.exit(0)
-    
-    # training loop
-    fig = plt.figure()
-    ax = fig.add_subplot()
-    candidates_input_dist, candidates_output_dist = [], []
-    t = trange(ITER_FROM+1, NUM_ITER+1, 1)
+    initial_input_dists = utils.objective(inputs[:, 0:2])
+    initial_output_dists = utils.objective(outputs)
+    for num, (pre, post) in enumerate(zip(initial_input_dists, initial_output_dists)):
+        print(f'# {num+1}: {pre.item():.3f} -> {post.item():.3f}')
     
     # plot initial samples
-    ax.scatter(inputs[:,0].cpu(), inputs[:,1].cpu(), s=10, alpha=0.5, color='yellow', label='input PRE')
-    ax.scatter(outputs[:,0].cpu(), outputs[:,1].cpu(), s=10, alpha=0.1, color='blue', label='input POST')
+    fig = plt.figure()
+    ax = fig.add_subplot()
+    ax.scatter(inputs[:, 0].cpu(), inputs[:, 1].cpu(), s=5, alpha=0.1, color='orange', label='input PRE')
+    ax.scatter(outputs[:, 0].cpu(), outputs[:, 1].cpu(), s=5, alpha=0.1, color='blue', label='input POST')
+    ax.set_title(f'initial samples')
+    ax.grid(linewidth=0.5)
+    fig.savefig(f"initial_samples.png", transparent=False)
+        
+    # training loop
+    candidates_input_dist, candidates_output_dist = [], []
 
-    # check only the initial samples
-    # ax.set_title(f"initial sampled data ({cfg['MOM4']['parttype']}).png")
-    # fig.savefig(f"initial_{cfg['train']['num_samples']}_samples_{cfg['MOM4']['parttype']}.png", transparent=True)
-    # sys.exit(0)
-    
     # surrogate.model is SingleTaskGP (GP) or NeuralProcess (NP) or AttentiveNeuralProcess (ANP)
-    acq_fcn = Acquisition(cfg=cfg, model=surrogate.model, device=device, model_type=MODEL)
-    candidate_input_list, candidate_output_list = pd.DataFrame([], columns=['x','y']), pd.DataFrame([], columns=['x','y'])
-    for iter in t:
+    acq_fcn = Acquisition(cfg=cfg, model=surrogate.model,
+                          device=device, model_type=MODEL)
+    candidate_input_list, candidate_output_list = pd.DataFrame([], columns=['x', 'y']), pd.DataFrame([], columns=['x', 'y'])
+    a, b = cfg['acquisition']['bounds'], 0  # ~U(0, bound)
+    scaler = lambda x: b + (a - b) * x
+    t = trange(1, NUM_CANDIDATES+1, 1)
+    for candidate_iter in t:
         # optimize acquisition functions and get new observations
         acq_start = time.time()
         candidate_inputs, acq_value = acq_fcn.optimize(np=optimize_np_bool)
         acq_end = time.time()
         
-        print('candidate:', candidate_inputs[0])
-        
+        candidate_inputs = candidate_inputs.to(device)
+        acq_value = acq_value.to(device)
+
         # add mounter noise: a uniform random distribution ~U(a, b)
-        a, b = cfg['acquisition']['bounds'], 0 # ~U(0, bound)
-        scaler = lambda x: b + (a - b) * x
         mounter_noise = scaler(torch.rand(candidate_inputs.shape))
         candidate_inputs += mounter_noise.to(device)
-        
-        print('candidate with noise:', candidate_inputs[0])
-        
-        # reflow oven simulation
-        # reflow oven expects input of shape []
-        reflowoven_start = time.time()
-        candidate_outputs = reflow_oven(candidate_inputs[0][0:2].unsqueeze(0), regr_multirf)
-        reflowoven_end = time.time()
-        print(f'[INFO] candidate #{iter}, PRE: {candidate_inputs}, POST: {candidate_outputs}')
-        
-        # continue
 
-        # append distance measures
-        input_dist = objective(candidate_inputs[0][0].cpu(), candidate_inputs[0][1].cpu())
-        output_dist = objective(candidate_outputs[0][0], candidate_outputs[0][1])
-        
-        # store distances for statistics
+        # reflow oven simulation
+        reflowoven_start = time.time()
+        candidate_outputs, _ = reflow_oven.self_alignment(candidate_inputs, model=None, toycfg=cfg['toy']) # no model needed for toy
+        # candidate_outputs = reflow_oven(candidate_inputs[0][0:2].unsqueeze(0), regr_multirf)
+        reflowoven_end = time.time()
+        # print(f'[INFO] candidate #{candidate_iter}, PRE: {candidate_inputs}, POST: {candidate_outputs}')
+
+        # append distance measures for candidates
+        input_dist = utils.objective(candidate_inputs)
+        output_dist = utils.objective(candidate_outputs)
         candidates_input_dist.append(input_dist)
         candidates_output_dist.append(output_dist)
 
         # update input and target tensors
-        inputs = torch.cat([inputs, candidate_inputs], dim=0)
-        new_target = torch.FloatTensor([output_dist]).unsqueeze(1).to(device)
-        targets = torch.cat([targets, new_target], dim=0)
-        
+        inputs = torch.cat([inputs[:, 0:2], candidate_inputs], dim=0)
+        outputs = torch.cat([outputs, candidate_outputs], dim=0)
+        targets = torch.cat([targets, output_dist], dim=0)
+
+        # ax.scatter(inputs[-1, 0], inputs[-1, 1], s=20, alpha=0.5, color='magenta', label='candidate PRE')
+        # ax.scatter(outputs[-1, 0], outputs[-1, 1], s=20, alpha=0.5, color='cyan', label='candidate POST')        
+        # fig.savefig(f"initial_samples with candidate.png", transparent=False)
+        # sys.exit(1)
+
         # adjust context or target size
         # ''' do either of the following '''
         # if 'NP' in MODEL:
@@ -205,103 +176,111 @@ def main():
         #         acq_fcn.num_restarts += 1
         #         acq_fcn.raw_samples += 1
         #     print(f"[INFO] NP: context size: {cfg[args.model.lower()]['num_context']}, target size: {acq_fcn.num_restarts}")
-                
+
         # re-initialize the models so they are ready for fitting on next iteration and re-train
         retrain_start = time.time()
         if 'NP' in MODEL:
-            info_dict = surrogate.fitNP(inputs, targets, cfg, toy_bool=args.toy, iter=iter)
+            info_dict = surrogate.fitNP(inputs, targets, cfg, toy_bool=args.toy, iter=candidate_iter)
         else:
-            info_dict = surrogate.fitGP(inputs, targets, cfg, toy_bool=args.toy, iter=iter)
+            info_dict = surrogate.fitGP(inputs, targets, cfg, toy_bool=args.toy, iter=candidate_iter)
         retrain_end = time.time()
-        
+
         # update progress bar
-        t.set_description(
-            desc=f"iteration {iter:>3}/{NUM_ITER-ITER_FROM} / loss: {info_dict['fopt']:.3f}," +
-                    # f'drawn candidate input: {candidate_inputs} ({candidate_inputs.shape}),' +
-                    # f'candidate output: {candidate_outputs} ({candidate_outputs.shape},' +
-                    f'\nprocessing:' +
-                    f'{CRED} total: {retrain_end-acq_start:.5f} sec, {CEND}' +
-                    # f'(acq): {acq_end-acq_start:.5f} sec,' +
-                    # f'(reflow oven): {reflowoven_end-reflowoven_start:.5f} sec,' +
-                    # f'(retrain): {retrain_end-retrain_start:.5f} sec,' +
-                    f'{CBLUE} dist: {input_dist:.3f} -> {output_dist:.3f} {CEND}', 
-            refresh=False)
-        
+        t.set_description(f'[{candidate_iter:>3}/{NUM_CANDIDATES-ITER_FROM}] candidate #{candidate_iter}, PRE: {candidate_inputs[0][0]}, POST: {candidate_outputs[0][0]}')
+
+        # t.set_description(
+        #     desc=f"iteration {candidate_iter:>3}/{NUM_CANDIDATES-ITER_FROM} / loss: {info_dict['fopt']:.3f}," +
+        #     # f'drawn candidate input: {candidate_inputs} ({candidate_inputs.shape}),' +
+        #     # f'candidate output: {candidate_outputs} ({candidate_outputs.shape},' +
+        #     f'\nprocessing:' +
+        #     f'{CRED} total: {retrain_end-acq_start:.5f} sec, {CEND}' +
+        #     # f'(acq): {acq_end-acq_start:.5f} sec,' +
+        #     # f'(reflow oven): {reflowoven_end-reflowoven_start:.5f} sec,' +
+        #     # f'(retrain): {retrain_end-retrain_start:.5f} sec,' +
+        #     f'{CBLUE} dist: {input_dist.item():.3f} -> {output_dist.item():.3f} {CEND}\n',
+        #     refresh=False)
+
         # plot PRE (x,y), POST (x,y)
-        alpha = (iter)*1/(NUM_ITER-ITER_FROM) if iter > 1 else 1
+        alpha = (candidate_iter)*1/(NUM_CANDIDATES-ITER_FROM)
         # alpha = 1
-        ax.scatter(candidate_inputs[0][0].cpu(), candidate_inputs[0][1].cpu(), s=10, alpha=alpha, color='red', label='_nolegend_')
-        ax.scatter(candidate_outputs[0][0], candidate_outputs[0][1], s=10, alpha=alpha, color='green', label='_nolegend_')
+        ax.scatter(inputs[-1, 0].cpu(), inputs[-1, 1].cpu(), s=20, alpha=alpha, color='magenta', label='_nolegend_')
+        ax.scatter(outputs[-1, 0].cpu(), outputs[-1, 1].cpu(), s=20, alpha=alpha, color='green', label='_nolegend_')
 
         # append to candidate input/output list
         # candidate_input_list.append((candidate_inputs[0][0].cpu(),candidate_inputs[0][1].cpu()))
         # candidate_output_list.append((candidate_outputs[0][0],candidate_outputs[0][1]))
+
+        candidate_input_list.loc[candidate_iter] = candidate_inputs[0].tolist()
+        candidate_output_list.loc[candidate_iter] = candidate_outputs[0].tolist()
         
-        candidate_input_list.loc[iter] = [candidate_inputs[0][0].cpu().item(), candidate_inputs[0][1].cpu().item()]
-        candidate_output_list.loc[iter] = [candidate_outputs[0][0].item(), candidate_outputs[0][1].item()]
-    
+        fig.savefig(f"initial_samples with candidate.png", transparent=False)
+
     # plot final inputs and outputs (for legend)
-    ax.scatter(candidate_inputs[0][0].cpu(), candidate_inputs[0][1].cpu(), alpha=1, s=10, color='red', label='input PRE')
-    ax.scatter(candidate_outputs[0][0], candidate_outputs[0][1], alpha=1, s=10, color='green', label='input POST')
-    
+    ax.scatter(inputs[-1, 0].cpu(), inputs[-1, 1].cpu(), s=20, alpha=alpha, color='magenta', label='input PRE')
+    ax.scatter(outputs[-1, 0].cpu(), outputs[-1, 1].cpu(), s=20, alpha=alpha, color='green', label='input POST')
+
+
     # print all distances at once
     print('\nCandidate distances')
     for num, (pre, post) in enumerate(zip(candidates_input_dist, candidates_output_dist)):
-        print(f'# {num+1}: {pre:.3f} -> {post:.3f}')
+        print(f'# {num+1}: {pre.item():.3f} -> {post.item():.3f}')
     print()
-    
+
     # compare with randomly sampled data as pre inputs (bounded within candidate samples)
     cfg['train']['num_samples'] = len(candidates_input_dist)
     # min_input_x, max_input_x = candidate_input_list['x'].min(), candidate_input_list['x'].max()
     # min_input_y, max_input_y = candidate_input_list['y'].min(), candidate_input_list['y'].max()
-    min_input_x, max_input_x = -150, 150
-    min_input_y, max_input_y = -150, 150
-    random_x = (max_input_x - min_input_x) * torch.rand(cfg['train']['num_samples'],1, device='cpu') + min_input_x
-    random_y = (max_input_y - min_input_y) * torch.rand(cfg['train']['num_samples'],1, device='cpu') + min_input_y
-    random_samples = np.concatenate((random_x, random_y), axis=1)
-    random_samples_outputs = reflow_oven(random_samples[:,0:2], regr_multirf)
-    
-    # plot 
+
+    # min_input_x, max_input_x = -150, 150
+    # min_input_y, max_input_y = -150, 150
+    # random_x = (max_input_x - min_input_x) * torch.rand(cfg['train']['num_samples'],1, device='cpu') + min_input_x
+    # random_y = (max_input_y - min_input_y) * torch.rand(cfg['train']['num_samples'],1, device='cpu') + min_input_y
+    # random_samples = np.concatenate((random_x, random_y), axis=1)
+    # random_samples_outputs = utils.reflow_oven(random_samples[:,0:2], regr_multirf)
+
+    # plot
     # ax.scatter(random_samples[:,0], random_samples[:,1], s=10, alpha=0.5, color='yellow', label='random PRE')
     # ax.scatter(random_samples_outputs[:,0], random_samples_outputs[:,1], s=10, alpha=1, color='blue', label='random POST')
-    
-    # print distance statistics
-    candidates_input_dist = np.asarray(candidates_input_dist)
-    candidates_output_dist = np.asarray(candidates_output_dist)
-    random_samples_input_dist = np.array([objective(x,y) for x, y in zip(random_samples[:,0], random_samples[:,1])])
-    random_samples_output_dist = np.array([objective(x,y) for x, y in zip(random_samples_outputs[:,0], random_samples_outputs[:,1])])
-    
-    list_to_stat = [candidates_input_dist, candidates_output_dist, initial_input_dists, initial_output_dists, random_samples_input_dist, random_samples_output_dist]
-    labels = ['candidates_input_dist', 'candidates_output_dist', 'initial_input_dists', 'initial_output_dists', 'random_samples_input_dist', 'random_samples_output_dist']
-    
-    print('=== summary ===')
-    for idx, item in enumerate(list_to_stat):
-        describe_item = make_pd_series(item, name=labels[idx]).describe()
-        print(f"{labels[idx]} --> \t {CBLUE} {describe_item.loc['mean']:.4f} {CEND} +/- {describe_item.loc['std']:.4f}")
+
+    # random_samples_input_dist = np.array([objective(x,y) for x, y in zip(random_samples[:,0], random_samples[:,1])])
+    # random_samples_output_dist = np.array([objective(x,y) for x, y in zip(random_samples_outputs[:,0], random_samples_outputs[:,1])])
+
+    # list_to_stat = [candidates_input_dist, candidates_output_dist, initial_input_dists,
+    #                 initial_output_dists] #, random_samples_input_dist, random_samples_output_dist]
+    # labels = ['candidates_input_dist', 'candidates_output_dist', 'initial_input_dists',
+    #           'initial_output_dists']  # , 'random_samples_input_dist', 'random_samples_output_dist']
+
+    # ''' print summary '''
+    # print('=== summary ===')
+    # for idx, item in enumerate(list_to_stat):
+    #     describe_item = utils.make_pd_series(item.cpu(), name=labels[idx]).describe()
+    #     print(f"{labels[idx]} --> \t {CBLUE} {describe_item.loc['mean']:.4f} {CEND} +/- {describe_item.loc['std']:.4f}")
     # stats = pd.concat(list_to_stat, dtype=float, names=labels, axis=1)
     # stats.to_csv(f'./results/{CHIP}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples_stats.csv')
-        
+
     # set axis (figure) attribute properties
     # ax.legend(loc='lower left',labels=['candidate PRE','candidate POST', 'random PRE','random POST'])
     # ax.legend(loc='lower left',labels=['candidate PRE','candidate POST'])
-    ax.legend(loc='lower left',labels=['input PRE','input POST','candidate PRE','candidate POST'])
-    params = {"text.color" : "blue",
-          "xtick.color" : "crimson",
-          "ytick.color" : "crimson"}
-    plt.rcParams.update(params)
-    ax.set_xlabel('x (\u03BCm)')
-    ax.set_ylabel('y (\u03BCm)')
-    ax.set_xlim([-120, 120])
-    ax.set_ylim([-120, 120])
-    ax.set_title(f'{CHIP}, {MODEL} ({NUM_SAMPLES} initial samples)')
-    ax.grid(True)
     
+    # ax.legend(loc='lower left', labels=[
+    #           'input PRE', 'input POST', 'candidate PRE', 'candidate POST'])
+    # params = {"text.color": "blue",
+    #           "xtick.color": "crimson", "ytick.color": "crimson"}
+    # plt.rcParams.update(params)
+    # ax.set_xlabel('x (\u03BCm)')
+    # ax.set_ylabel('y (\u03BCm)')
+    # ax.set_xlim([-120, 120])
+    # ax.set_ylim([-120, 120])
+    # ax.set_title(f'{CHIP}, {MODEL} ({NUM_SAMPLES} initial samples)')
+    # ax.grid(True)
+
     # save figure
-    image_save_path = f'results/{CHIP}_{MODEL}_{NUM_ITER}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples_{time.strftime("%Y%m%d")}.png'
-    fig.savefig(image_save_path)
-    
+    # image_save_path = f'results/{CHIP}_{MODEL}_{NUM_CANDIDATES}iter_{NUM_TRAIN_EPOCH}epoch_{NUM_SAMPLES}samples_{time.strftime("%Y%m%d")}.png'
+    # fig.savefig(image_save_path)
+
     writer.flush()
     writer.close()
-        
+
+
 if __name__ == '__main__':
     main()

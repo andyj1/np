@@ -3,7 +3,7 @@
 import torch
 
 class ToyData(object):
-    def __init__(self, config) -> None:
+    def __init__(self, config):
         super().__init__()
         self.num_samples = config['num_samples']
         # PRE L, W
@@ -19,8 +19,7 @@ class ToyData(object):
         self.mu_spi2 = config['mu_spi2']
         self.sigma_spi1 = config['sigma_spi1']
         self.sigma_spi2 = config['sigma_spi2']
-        
-
+    
     def preLW(self):
         l = torch.normal(mean=self.mu1, std=self.sigma1, size=(self.num_samples, 1))
         w = torch.normal(mean=self.mu2, std=self.sigma2, size=(self.num_samples, 1))

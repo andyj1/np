@@ -10,40 +10,29 @@ import torch
 import yaml
 
 from utils import self_alignment as reflow_oven
-from toy import ToyData
+from data.toy import ToyData
 
 def flatten(df): # -> torch.FloatTensor
     # function: reshape pandas dataframe to flattened tensor shape
     return torch.FloatTensor(df.to_numpy().reshape(-1,df.shape[1]))
 
-def getTOYdata(cfg):
+def getTOYdata(cfg, model=None, device='cuda'):
     '''
     getTOYdata(): generates a set of PRE data and passes through reflow oven to get POST data
     '''
-    start_time = time.time()
-    
-    # config
     toycfg = cfg['toy']
-    # num_samples = toycfg['num_samples']   
-    # chipname = toycfg['chip']
-    # print('\nselected:',chipname)
-
-    # toy_module = getattr(import_module('toy'),toycfg['method'])
-    # chip = cfg['MOM4']['chips'][chipname] # variables: length, wdith
-
-    # generate data
     toy = ToyData(toycfg)
     inputs = torch.cat([toy.preLW(), toy.preAngle(), toy.SPIcenter()], dim=1)
 
-    # self alignment stage
+    # self alignment
     global method
-    outputs, method = reflow_oven.self_alignment(inputs, None, toycfg) # no model needed for toy
+    outputs, method = reflow_oven.self_alignment(inputs, model=None, toycfg=toycfg) # no model needed for toy
+    print('[INFO] self alignment method:',method)
     
-    end_time = time.time()
-    print(': took %.3f seconds' % (end_time-start_time))
+    inputs = inputs.to(device)
+    outputs = outputs.to(device)
     
     return inputs, outputs
-
 
 def getSineData(cfg):
     '''

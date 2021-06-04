@@ -64,9 +64,8 @@ def fit_gpytorch_torch(
     track_iterations: bool = True,
     approx_mll: bool = True,
     custom_optimizer: Optional[Optimizer] = None,
-    device = None,
-    display_for_every = 1
-) -> Tuple[MarginalLogLikelihood, Dict[str, Union[float, List[OptimizationIteration]]]]:
+    display_for_every = 10
+):# -> Tuple[MarginalLogLikelihood, Dict[str, Union[float, List[OptimizationIteration]]]]:
     r"""Fit a gpytorch model by maximizing MLL with a torch optimizer.
 
     The model and likelihood in mll must already be in train mode.
@@ -106,11 +105,11 @@ def fit_gpytorch_torch(
         >>> fit_gpytorch_torch(mll)
         >>> mll.eval()
     """
-
-    optim_options = {"maxiter": 100, "disp": True, "lr": 0.05}
+    optim_options = options if options is not None else {"maxiter": 100, "disp": True, "lr": 0.05}
     optim_options.update(options or {})
     exclude = optim_options.pop("exclude", None)
     DISPLAY_FOR_EVERY = display_for_every if display_for_every != 1 else optim_options["maxiter"] // 5 if optim_options["maxiter"]>5 else 1
+
     if exclude is not None:
         mll_params = [
             t for p_name, t in mll.named_parameters() if p_name not in exclude
@@ -167,8 +166,8 @@ def fit_gpytorch_torch(
         loss_trajectory.append(loss.item())
         for name, param in mll.named_parameters():
             param_trajectory[name].append(param.detach().clone())
-        if optim_options["disp"] and ((i + 1) % (optim_options['maxiter']//DISPLAY_FOR_EVERY) == 0):# or i == (optim_options["maxiter"] - 1)):
-            print(f"\tTrain Epoch: {i + 1:>3}/{optim_options['maxiter']} / Loss: {loss.item():>4.3f}")
+        if optim_options["disp"]: # and ((i + 1) % (optim_options['maxiter']//DISPLAY_FOR_EVERY) == 0):# or i == (optim_options["maxiter"] - 1)):
+            print(f"\tTrain iter: {i+1:>3}/{optim_options['maxiter']} / Loss: {loss.item():>4.3f}")
         if track_iterations:
             iterations.append(OptimizationIteration(i, loss.item(), time.time() - t1))
         optimizer.step()
@@ -184,6 +183,8 @@ def fit_gpytorch_torch(
         "wall_time": time.time() - t1,
         "iterations": iterations,
     }
+    # if not optim_options['disp']:
+    #     print(f"\tTrain iter: {i:>3}/{optim_options['maxiter']} / Loss: {loss.item():>4.3f}")
     return mll, info_dict, optimizer
 
 
@@ -197,7 +198,7 @@ def fit_gpytorch_scipy(
     scipy_objective: TScipyObjective = _scipy_objective_and_grad,
     module_to_array_func: TModToArray = module_to_array,
     module_from_array_func: TArrayToMod = set_params_with_array,
-) -> Tuple[MarginalLogLikelihood, Dict[str, Union[float, List[OptimizationIteration]]]]:
+):# -> Tuple[MarginalLogLikelihood, Dict[str, Union[float, List[OptimizationIteration]]]]:
     r"""Fit a gpytorch model by maximizing MLL with a scipy optimizer.
 
     The model and likelihood in mll must already be in train mode.

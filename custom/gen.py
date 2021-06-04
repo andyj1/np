@@ -38,7 +38,7 @@ def gen_candidates_scipy(
     equality_constraints: Optional[List[Tuple[Tensor, Tensor, float]]] = None,
     options: Optional[Dict[str, Any]] = None,
     fixed_features: Optional[Dict[int, Optional[float]]] = None,
-) -> Tuple[Tensor, Tensor]:
+):# -> Tuple[Tensor, Tensor]:
     r"""Generate a set of candidates using `scipy.optimize.minimize`.
 
     Optimizes an acquisition function starting from a set of initial candidates

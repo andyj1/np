@@ -136,6 +136,8 @@ class Decoder(nn.Module):
         batch_size, num_x, _ = x.shape
         latent = latent.unsqueeze(1).repeat(1, num_x, 1)
         
+        print(x.shape, latent.shape)
+        
         xz_input = torch.cat((x, latent), dim=-1)
         # flatten
         xz_input_flattened = xz_input.view(batch_size * num_x, self.input_dim)

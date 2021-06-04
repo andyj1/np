@@ -4,3 +4,4 @@ certifi    2020.12.5
 pip        20.3.3
 setuptools 52.0.0.post20210125
 wheel      0.36.2
+torch      1.8.1

@@ -30,12 +30,11 @@ def save_ckpt(model, optimizer, np_bool, chip, iter):
                     'optimizer' : optimizer.state_dict()}
     base_path = f'ckpts/'
     chip_path = f'{chip}/' if chip is not 'toy' else 'toy/'
-    
-    checkpoint_path = f'checkpoint_{iter}_'
     model_type = 'NP' if np_bool else 'GP'
+    checkpoint_path = f'_iter_{iter}'
     extension = '.pt'
     
-    save_path = base_path + chip_path + checkpoint_path + model_type + extension
+    save_path = base_path + chip_path + model_type + checkpoint_path + extension
     torch.save(checkpoint, save_path)
         
 class SurrogateModel(object):
@@ -44,7 +43,6 @@ class SurrogateModel(object):
                 
         # use GPU if available
         self.device = device
-        self.dtype = torch.float
         self.writer = writer
         
         self.epochs = epochs
@@ -65,7 +63,23 @@ class SurrogateModel(object):
 
         # initialize model
         self.model, mll, self.optimizer = self.initialize_model(cfg, self.model_type, train_X, train_Y, self.device)
+    
+    def initialize_model(self, cfg, model_type, train_X, train_Y, device):
+        model = None
+        mll = None
+        if model_type == 'NP':
+            model = NeuralProcesses(cfg, device)
+        elif model_type == 'ANP':
+            model = AttentiveNeuralProcesses(cfg)
+        elif self.model_type == 'GP':
+            model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
+            model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
+            mll = ExactMarginalLogLikelihood(likelihood=model.likelihood, model=model)
+            mll.to(train_X)
         
+        optimizer = self.optimizer_cls(model.parameters(), lr=self.lr)
+        return model, mll, optimizer
+    
     # custom GP fitting
     def fitGP(self, train_X, train_Y, cfg, toy_bool=False, iter=0):
         chip = cfg['MOM4']['parttype']
@@ -77,7 +91,7 @@ class SurrogateModel(object):
         
         # customize optimizer in 'fit.py' in fit_gpytorch_torch()
         # optimizer need not have a closure
-        optimizer_options = {'lr': cfg['train']['lr'], 'maxiter': cfg['train']['num_candidates'], 'disp': True}
+        optimizer_options = {'lr': cfg['train']['lr'], 'maxiter': cfg['train']['maxiter'], 'disp': cfg['train']['disp']}
         
         ''' define custom optimizer using optimizer class: "self.optimizer_cls" '''
         # self.optimizer = self.optimizer_cls(model.parameters())
@@ -88,7 +102,6 @@ class SurrogateModel(object):
                                             options=optimizer_options, \
                                             approx_mll=True, \
                                             custom_optimizer=self.optimizer, \
-                                            device=self.device,
                                             display_for_every=self.DISPLAY_FOR_EVERY)
         loss = info_dict['fopt']
         self.model = mll.model
@@ -155,9 +168,6 @@ class SurrogateModel(object):
             target_y = target_y.unsqueeze(0)
             query = (context_x, context_y, target_x)
             
-            # print('context x:', context_x.shape, 'target x:', target_x.shape)
-            # print('context y:', context_y.shape, 'target y:', target_y.shape)
-            
             # training
             # ** need to iterate for performance
             t_iter = tqdm(range(n_iter), total=n_iter)
@@ -209,18 +219,3 @@ class SurrogateModel(object):
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
     
-    def initialize_model(self, cfg, model_type, train_X, train_Y, device):
-        model = None
-        mll = None
-        if model_type == 'NP':
-            model = NeuralProcesses(cfg, device)
-        elif model_type == 'ANP':
-            model = AttentiveNeuralProcesses(cfg)
-        elif self.model_type == 'GP':
-            model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
-            model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
-            mll = ExactMarginalLogLikelihood(likelihood=model.likelihood, model=model)
-            mll.to(train_X)
-        
-        optimizer = self.optimizer_cls(model.parameters(), lr=self.lr)
-        return model, mll, optimizer

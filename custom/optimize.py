@@ -43,7 +43,7 @@ def optimize_acqf(
     return_best_only: bool = True, # calls the same procedure for exploitation step in `gen.py`
     sequential: bool = False,
     **kwargs: Any,
-) -> Tuple[Tensor, Tensor]:
+):# -> Tuple[Tensor, Tensor]:
     r"""Generate a set of candidates via multi-start optimization.
 
     Args:
