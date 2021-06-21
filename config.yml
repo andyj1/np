@@ -14,7 +14,7 @@ train:
 acquisition:        # by default, it uses multi-start optimization
   option: 1         # acquisition function type: [1: UpperConfidenceBound, 2: ExpectedImprovement, 3: ProbabilityOfImprovement]
   q: 1              # smallest number of candidates to be considered jointly; q=1 for single-outcome
-  bounds: 20        # 2xd tensor of lower and upper bounds for each column of X
+  bounds: 50        # 2xd tensor of lower and upper bounds for each column of X
   beta: 2           # the smaller value, the more exploitative acquisition function becomes (UCB)
   best_f: 0.1
   num_restarts: 1    # number of starting points for multi-start acquisition function
