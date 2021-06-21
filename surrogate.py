@@ -15,7 +15,7 @@ from gpytorch.mlls import ExactMarginalLogLikelihood
 from torch.optim import SGD
 from tqdm import tqdm, trange
 
-# from botorch.fit import fit_gpytorch_model
+from botorch.fit import fit_gpytorch_model
 from custom.fit import fit_gpytorch_torch
 from NPModels.ANP import ANP as AttentiveNeuralProcesses
 from NPModels.NP import NP as NeuralProcesses
@@ -73,7 +73,7 @@ class SurrogateModel(object):
             model = AttentiveNeuralProcesses(cfg)
         elif self.model_type == 'GP':
             model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
-            model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
+            # model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
             mll = ExactMarginalLogLikelihood(likelihood=model.likelihood, model=model)
             mll.to(train_X)
         
@@ -108,6 +108,7 @@ class SurrogateModel(object):
         
         # alternative to fit_gpytorch_torch; more general fit API
         # fit_gpytorch_model(mll, optimizer=fit_gpytorch_torch)
+        fit_gpytorch_model(mll)
 
         ''' 
         # uncomment the following for custom GP fitting \

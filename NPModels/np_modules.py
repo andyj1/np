@@ -132,11 +132,11 @@ class Decoder(nn.Module):
             mu [1, y_dim]
             sigma [1, y_dim]
         '''
-        # make x, z have dimensions x+z dim such as (batch_size, num_points, x_dim + z_dim)
+        # make x, z have dimensions x+z dim such as (batch_size, num_points, x_dim + z_dim)        
         batch_size, num_x, _ = x.shape
         latent = latent.unsqueeze(1).repeat(1, num_x, 1)
         
-        print(x.shape, latent.shape)
+        # print(x.shape, latent.shape)
         
         xz_input = torch.cat((x, latent), dim=-1)
         # flatten

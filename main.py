@@ -150,6 +150,10 @@ def main():
         # print(f'[INFO] candidate #{candidate_iter}, PRE: {candidate_inputs}, POST: {candidate_outputs}')
 
         # append distance measures for candidates
+        if len(candidate_inputs.shape)==3:
+            candidate_inputs = candidate_inputs.squeeze(0)
+        if len(candidate_outputs.shape)==3:
+            candidate_outputs = candidate_outputs.squeeze(0)
         input_dist = utils.objective(candidate_inputs)
         output_dist = utils.objective(candidate_outputs)
         candidates_input_dist.append(input_dist)
@@ -218,7 +222,6 @@ def main():
     # plot final inputs and outputs (for legend)
     ax.scatter(inputs[-1, 0].cpu(), inputs[-1, 1].cpu(), s=20, alpha=alpha, color='magenta', label='input PRE')
     ax.scatter(outputs[-1, 0].cpu(), outputs[-1, 1].cpu(), s=20, alpha=alpha, color='green', label='input POST')
-
 
     # print all distances at once
     print('\nCandidate distances')

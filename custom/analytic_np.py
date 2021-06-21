@@ -134,6 +134,9 @@ class UpperConfidenceBound(AnalyticAcquisitionFunction):
             design points `X`.
         """
         self.beta = self.beta.to(target_x)
+        if len(target_x.shape) == 4: target_x = target_x.squeeze(0)
+        else: target_x = target_x.permute((1,0,2))
+        print('target x:', target_x.shape)
         posterior = self._get_posterior(X=target_x)
         '''
             _get_posterior from the abstract class

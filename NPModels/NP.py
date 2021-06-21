@@ -88,7 +88,7 @@ class NP(nn.Module):
         # mu, sigma dimension: 1
         z_samples = self.latent_dist.rsample() # sample from latent distribution
         
-        ''' decode '''
+        ''' decode '''        
         context_pred_mu, context_pred_sigma = self.decoder(context_x, z_samples)        
         target_pred_mu, target_pred_sigma = self.decoder(target_x, z_samples)
         

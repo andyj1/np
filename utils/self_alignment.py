@@ -51,7 +51,7 @@ def constantshift(inputs, toycfg):
     # input_info = ['pre_l', 'pre_w']
     # output_info = ['post_l', 'post_w']
 
-    x_offset, x_noise, y_offset, y_noise = [dict.get(toycfg, variable) for variable in ['x_offset', 'x_noise', 'y_offset', 'y_noise']]
+    # x_offset, x_noise, y_offset, y_noise = [dict.get(toycfg, variable) for variable in ['x_offset', 'x_noise', 'y_offset', 'y_noise']]
     pre_chip = inputs[:, 0:2]
     
     # # for statistics
