@@ -26,8 +26,9 @@ CBLUE   = '\033[94m'
 CEND    = '\033[0m'
 
 def save_ckpt(model, optimizer, np_bool, chip, iter):
-    checkpoint = {'state_dict': model.state_dict(),
-                    'optimizer' : optimizer.state_dict()}
+    checkpoint = {'state_dict': model.state_dict()}
+    if optimizer is not None:
+        checkpoint.update({'optimizer' : optimizer.state_dict()})
     base_path = f'ckpts/'
     chip_path = f'{chip}/' if chip is not 'toy' else 'toy/'
     model_type = 'NP' if np_bool else 'GP'
@@ -96,19 +97,21 @@ class SurrogateModel(object):
         ''' define custom optimizer using optimizer class: "self.optimizer_cls" '''
         # self.optimizer = self.optimizer_cls(model.parameters())
         self.optimizer = None # if None, defines a new optimizer within fit_gpytorch_torch
-
-        mll, info_dict, self.optimizer = fit_gpytorch_torch(mll=mll, \
-                                            optimizer_cls=self.optimizer_cls, \
-                                            options=optimizer_options, \
-                                            approx_mll=True, \
-                                            custom_optimizer=self.optimizer, \
-                                            display_for_every=self.DISPLAY_FOR_EVERY)
-        loss = info_dict['fopt']
-        self.model = mll.model
+        # mll, info_dict, self.optimizer = fit_gpytorch_torch(mll=mll, \
+        #                                     optimizer_cls=self.optimizer_cls, \
+        #                                     options=optimizer_options, \
+        #                                     approx_mll=True, \
+        #                                     custom_optimizer=self.optimizer, \
+        #                                     display_for_every=self.DISPLAY_FOR_EVERY)
+        # loss = info_dict['fopt']
         
         # alternative to fit_gpytorch_torch; more general fit API
         # fit_gpytorch_model(mll, optimizer=fit_gpytorch_torch)
-        fit_gpytorch_model(mll)
+        mll = fit_gpytorch_model(mll)
+        info_dict = {}
+        
+        self.model = mll.model
+        
 
         ''' 
         # uncomment the following for custom GP fitting \

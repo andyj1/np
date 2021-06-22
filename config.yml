@@ -6,7 +6,7 @@ train:
   num_epoch: 1
   maxiter: 100
   disp: False
-  num_candidates: 50    # number of sampling a new pair of candidates
+  num_candidates: 100    # number of sampling a new pair of candidates
   display_for_every: 50 # number of lines of training state results printed
   num_samples: 100
 
@@ -14,8 +14,8 @@ train:
 acquisition:        # by default, it uses multi-start optimization
   option: 1         # acquisition function type: [1: UpperConfidenceBound, 2: ExpectedImprovement, 3: ProbabilityOfImprovement]
   q: 1              # smallest number of candidates to be considered jointly; q=1 for single-outcome
-  bounds: 50        # 2xd tensor of lower and upper bounds for each column of X
-  beta: 2           # the smaller value, the more exploitative acquisition function becomes (UCB)
+  bounds: 20        # 2xd tensor of lower and upper bounds for each column of X
+  beta: 0.5           # the smaller value, the more exploitative acquisition function becomes (UCB)
   best_f: 0.1
   num_restarts: 1    # number of starting points for multi-start acquisition function
   raw_samples: 100   # number of samples for initialization
@@ -33,7 +33,7 @@ np:
   r_dim: 128
   z_dim: 128
   y_dim: 1
-  num_context: 100
+  num_context: 50
   num_iter: 100
 
 # toy data 

@@ -27,6 +27,8 @@ from botorch.optim.stopping import ExpMAStoppingCriterion
 from torch import Tensor
 
 from custom.gen import gen_candidates_scipy
+from custom.initializers import (gen_batch_initial_conditions_NP, gen_one_shot_kg_initial_conditions_NP, gen_value_function_initial_conditions_NP)
+
 
 def optimize_acqf(
     acq_function: AcquisitionFunction,
@@ -322,9 +324,9 @@ def optimize_acqf_NP(
     
     if batch_initial_conditions is None:
         ic_gen = (
-            gen_one_shot_kg_initial_conditions
+            gen_one_shot_kg_initial_conditions_NP
             if isinstance(acq_function, qKnowledgeGradient)
-            else gen_batch_initial_conditions
+            else gen_batch_initial_conditions_NP
         )
         # TODO: Generating initial candidates should use parameter constraints.
         batch_initial_conditions = ic_gen(

@@ -16,9 +16,7 @@ from tqdm import trange
 from acquisition import Acquisition
 from dataset import getMOM4data, getSineData, getTOYdata
 from surrogate import SurrogateModel
-import utils.utils as utils
-from utils.parse import parse_args
-from utils import self_alignment as reflow_oven
+from utils import self_alignment as reflow_oven, parse, utils
 
 ''' global variables '''
 # color codes for text in UNIX shell
@@ -31,7 +29,7 @@ CEND = '\033[0m'
 def main():
     ''' preliminary setup '''
     print('Setting up workspace environment...')
-    args = parse_args()
+    args = parse.parse_args()
     utils.supress_warnings()
     utils.set_torch_seed(seed=42, benchmark=False)
     utils.set_decomposition_type(args.cholesky) # if argument is True, then computes exact decomposition using Cholesky
@@ -54,7 +52,7 @@ def main():
 
     ''' manipulate context and target sizes: discarded '''
     if args.model.lower() in cfg.keys():
-        print(f'{CRED}num_context{CEND}:', cfg[args.model.lower()]['num_context'])
+        print(f'{CRED}# Context in {args.model.lower()}{CEND}:', cfg[args.model.lower()]['num_context'])
     # cfg['acquisition']['num_restarts'] = cfg['acquisition']['raw_samples']
     # if args.model.lower() in cfg.keys():
     #     cfg[args.model.lower()]['num_context'] = 0
@@ -115,7 +113,7 @@ def main():
     ax = fig.add_subplot()
     ax.scatter(inputs[:, 0].cpu(), inputs[:, 1].cpu(), s=5, alpha=0.1, color='orange', label='input PRE')
     ax.scatter(outputs[:, 0].cpu(), outputs[:, 1].cpu(), s=5, alpha=0.1, color='blue', label='input POST')
-    ax.set_title(f'initial samples')
+    ax.set_title(f'initial samples ({MODEL})')
     ax.grid(linewidth=0.5)
     fig.savefig(f"initial_samples.png", transparent=False)
         
