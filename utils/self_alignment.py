@@ -40,7 +40,7 @@ def self_alignment(inputs, model=None, toycfg=None):
 ''' 
     NOTE: BELOW contain 4 different self alignment demos
 '''
-def constantshift(inputs, toycfg):
+def constantshift(inputs, toycfg=None):
     '''
     constant shift variables:
         position: random normal        
@@ -87,7 +87,7 @@ def shift(inputs, toycfg):
     y_offsets = torch.normal(mean=y_offset, std=y_noise, size=(pre_chip.shape[0], 1))
     offsets = torch.cat([x_offsets, y_offsets], -1)
 
-    post_chip = pre_chip + offsets
+    post_chip = pre_chip + offsets.to(pre_chip.device)
     return post_chip
 
 def shiftPolar(inputs, toycfg):

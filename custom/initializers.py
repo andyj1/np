@@ -24,6 +24,8 @@ from botorch.utils.transforms import standardize
 from torch import Tensor
 from torch.quasirandom import SobolEngine
 
+import numpy as np
+
 
 def gen_batch_initial_conditions_NP(
     acq_function: AcquisitionFunction,
@@ -90,7 +92,8 @@ def gen_batch_initial_conditions_NP(
             f"({SobolEngine.MAXDIM}). Using iid samples instead.",
             SamplingWarning,
         )
-
+        
+    batch_initial_conditions = None
     while factor < max_factor:
         with warnings.catch_warnings(record=True) as ws:
             n = raw_samples * factor
@@ -115,6 +118,7 @@ def gen_batch_initial_conditions_NP(
                     Y_rnd_list.append(Y_rnd_curr)
                     start_idx += batch_limit
                 Y_rnd = torch.cat(Y_rnd_list)
+            
             batch_initial_conditions = init_func(
                 X=X_rnd, Y=Y_rnd, n=num_restarts, **init_kwargs
             ).to(device=device)
@@ -195,7 +199,7 @@ def gen_one_shot_kg_initial_conditions_NP(
     q_aug = acq_function.get_augmented_q_batch_size(q=q)
 
     # TODO: Avoid unnecessary computation by not generating all candidates
-    ics = gen_batch_initial_conditions(
+    ics = gen_batch_initial_conditions_NP(
         acq_function=acq_function,
         bounds=bounds,
         q=q_aug,
@@ -394,10 +398,11 @@ def initialize_q_batch_NP(X: Tensor, Y: Tensor, n: int, eta: float = 1.0) -> Ten
         >>> Xrnd = torch.rand(500, 3, 6)
         >>> Xinit = initialize_q_batch_NP(Xrnd, qUCB(Xrnd), 10)
     """
-    # print('=======initialize_q_batch_NP========')
-    # print('input:', X.shape, Y.shape)
+    Y = torch.squeeze(Y)
+    # print(f'[initialize_q_batch_NP] X: {X.shape}, Y: {Y.shape}') # X: [num_samples, batch_size(=1), num_dim], Y: [num_samples]    
+    
     n_samples = X.shape[0]
-    # batch_shape = X.shape[1:-2] or torch.Size()
+    batch_shape = X.shape[1:-2] or torch.Size()
     if n > n_samples:
         raise RuntimeError(
             f"n ({n}) cannot be larger than the number of "
@@ -405,49 +410,42 @@ def initialize_q_batch_NP(X: Tensor, Y: Tensor, n: int, eta: float = 1.0) -> Ten
         )
     elif n == n_samples:
         return X
-    Ystd = Y.std(dim=0)
-    if torch.any(Ystd == 0):
+
+    Ystd = Y.std(dim=0, keepdim=False, unbiased=False) # unbiased = no Bessel correction
+    if torch.any(Ystd == 0) or torch.any(Ystd == np.nan):
         warnings.warn(
             "All acquisition values for raw samples points are the same for "
             "at least one batch. Choosing initial conditions at random.",
             BadInitialCandidatesWarning,
         )
+        print('[initializers] Randomly permuted indices')
         return X[torch.randperm(n=n_samples, device=X.device)][:n]
 
-    max_val, max_idx = torch.max(Y, dim=0)
     
+    max_val, max_idx = torch.max(Y, dim=0)
     Z = (Y - Y.mean(dim=0)) / Ystd
     etaZ = eta * Z
     weights = torch.exp(etaZ)
     while torch.isinf(weights).any():
         etaZ *= 0.5
         weights = torch.exp(etaZ)
-        
-    # print(Y[0][0:5], Z[0][0:5], eta, etaZ[0][0:5], weights[0][0:5])
-    print(Y.shape, Z.shape, etaZ.shape, weights.shape)
-    # print(weights, weights.shape)
-    # if weights.shape[1] == 1: weights = weights.squeeze(1).permute((1,0))
-    # print(weights.shape, n)
+    # print('Z:',Z.shape, 'etaZ:',etaZ.shape, 'weights:',weights.shape) # Z, etaZ, weights: [num_samples]
     
-    # ignore batch shape (in X)
-    idcs = torch.multinomial(weights, n)
-    idcs[-1] = max_idx
-    return X[idcs]
-    # if batch_shape == torch.Size():
-    #     idcs = torch.multinomial(weights, n)
-    # else:
-    #     idcs = batched_multinomial(
-    #         weights=weights.permute(*range(1, len(batch_shape) + 1), 0), num_samples=n
-    #     ).permute(-1, *range(len(batch_shape)))
-    # # make sure we get the maximum
-    # if max_idx not in idcs:
-    #     idcs[-1] = max_idx
-    # if batch_shape == torch.Size():
-    #     return X[idcs]
-    # else:
-    #     return X.gather(
-    #         dim=0, index=idcs.view(*idcs.shape, 1, 1).expand(n, *X.shape[1:])
-    #     )
+    if batch_shape == torch.Size():
+        idcs = torch.multinomial(weights, n)
+    else:
+        idcs = batched_multinomial(
+            weights=weights.permute(*range(1, len(batch_shape) + 1), 0), num_samples=n
+        ).permute(-1, *range(len(batch_shape)))
+    # make sure we get the maximum
+    if max_idx not in idcs:
+        idcs[-1] = max_idx
+    if batch_shape == torch.Size():
+        return X[idcs]
+    else:
+        return X.gather(
+            dim=0, index=idcs.view(*idcs.shape, 1, 1).expand(n, *X.shape[1:])
+        )
 
 
 def initialize_q_batch_nonneg_NP(

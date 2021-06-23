@@ -136,7 +136,7 @@ class Decoder(nn.Module):
         batch_size, num_x, _ = x.shape
         latent = latent.unsqueeze(1).repeat(1, num_x, 1)
         
-        # print(x.shape, latent.shape)
+        # print(f'[Decoder] x: {x.shape}, latent: {latent.shape}')
         
         xz_input = torch.cat((x, latent), dim=-1)
         # flatten
@@ -148,6 +148,6 @@ class Decoder(nn.Module):
         # pass through fully connected layer for mean and standard deviation
         mu, logvar = torch.split(hidden, split_size_or_sections=1, dim=2)        
         sigma = np_utils.logvar_to_std(logvar)
-                        
+                    
         return mu, sigma
     

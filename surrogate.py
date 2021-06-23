@@ -3,27 +3,30 @@
 import random
 import sys
 import time
-from utils.utils import checkParamIsSentToCuda
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from botorch.fit import fit_gpytorch_model
 from botorch.models import SingleTaskGP
 from gpytorch.constraints.constraints import GreaterThan
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from torch.optim import SGD
 from tqdm import tqdm, trange
 
-from botorch.fit import fit_gpytorch_model
 from custom.fit import fit_gpytorch_torch
 from NPModels.ANP import ANP as AttentiveNeuralProcesses
 from NPModels.NP import NP as NeuralProcesses
 from utils.np_utils import random_split_context_target
+from utils.utils import checkParamIsSentToCuda
 
-CRED    = '\033[91m'
-CBLUE   = '\033[94m'
-CEND    = '\033[0m'
+# color codes for text in UNIX shell
+CRED = '\033[91m'
+CGREEN = '\033[92m'
+CCYAN = '\033[93m'
+CBLUE = '\033[94m'
+CEND = '\033[0m'
 
 def save_ckpt(model, optimizer, np_bool, chip, iter):
     checkpoint = {'state_dict': model.state_dict()}
@@ -37,29 +40,23 @@ def save_ckpt(model, optimizer, np_bool, chip, iter):
     
     save_path = base_path + chip_path + model_type + checkpoint_path + extension
     torch.save(checkpoint, save_path)
-        
+
 class SurrogateModel(object):
-    def __init__(self, train_X, train_Y, args, cfg, writer, device=torch.device('cpu'), epochs=100, model_type='GP'):
+    def __init__(self, train_X, train_Y, args, cfg, writer, epochs, model_type):
         super(SurrogateModel, self).__init__()
-                
-        # use GPU if available
-        self.device = device
-        self.writer = writer
-        
+        self.device = args.device
+        self.writer = writer        
         self.epochs = epochs
         self.model_type = model_type
         self.DISPLAY_FOR_EVERY = cfg['train']['display_for_every']
         if self.model_type.lower() == 'np':
             self.num_context = cfg[self.model_type.lower()]['num_context']
         
-        # configure optimizer
+        # configure optimizer for training GP (fit_gpytorch_torch); doesn't support dense gradients like SparseAdam
         if cfg['train']['optimizer'] == 'Adam':
             self.optimizer_cls = optim.Adam
         elif cfg['train']['optimizer'] == 'SGD':
             self.optimizer_cls = optim.SGD
-        # optimizer_cls = optim.AdamW
-        # optimizer_cls = optim.SparseAdam # doesn't support dense gradients
-        # self.optimizer_cls = optim.Adamax
         self.lr = cfg['train']['lr']
 
         # initialize model
@@ -70,8 +67,10 @@ class SurrogateModel(object):
         mll = None
         if model_type == 'NP':
             model = NeuralProcesses(cfg, device)
+            model = model.to(device)
         elif model_type == 'ANP':
             model = AttentiveNeuralProcesses(cfg)
+            model = model.to(device)
         elif self.model_type == 'GP':
             model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
             # model.likelihood.noise_covar.register_constraint("raw_noise", GreaterThan(1e-5))
@@ -81,13 +80,18 @@ class SurrogateModel(object):
         optimizer = self.optimizer_cls(model.parameters(), lr=self.lr)
         return model, mll, optimizer
     
+    def train(self, inputs, targets, args, cfg, toy_bool, iter=0):    
+        if 'GP' in args.model.upper():
+            info_dict = self.fitGP(inputs[:, 0:2], targets, cfg, toy_bool=toy_bool, iter=iter)
+        elif 'NP' in args.model.upper():
+            info_dict = self.fitNP(inputs[:, 0:2], targets, cfg, toy_bool=toy_bool)
+    
+    # ======================================================================================================================
     # custom GP fitting
     def fitGP(self, train_X, train_Y, cfg, toy_bool=False, iter=0):
         chip = cfg['MOM4']['parttype']
         
         self.model, mll, self.optimizer = self.initialize_model(cfg, self.model_type, train_X, train_Y, self.device)
-        # default wrapper tor training
-        # fit_gpytorch_model(mll)
         mll.train()
         
         # customize optimizer in 'fit.py' in fit_gpytorch_torch()
@@ -110,33 +114,33 @@ class SurrogateModel(object):
         mll = fit_gpytorch_model(mll)
         info_dict = {}
         
-        self.model = mll.model
         
 
-        ''' 
+        
         # uncomment the following for custom GP fitting \
         # * can't output lengthscale value due to >1 inputs
         
-        optimizer_options = {'lr': 0.05} # for pytorch
-        model.train() # set train mode
-        self.optimizer = self.optimizer_cls([{'params': model.parameters()}], **optimizer_options)        
-        DISPLAY_FOR_EVERY = self.epochs
-        t = trange(self.epochs, desc='', leave=False)
-        for train_epoch in t:
+        # optimizer_options = {'lr': 1e-3} # for pytorch
+        # self.model.train() # set train mode
+        # self.optimizer = self.optimizer_cls([{'params': self.model.parameters()}], **optimizer_options)        
+        # DISPLAY_FOR_EVERY = self.epochs
+        # t = trange(self.epochs, desc='', leave=False)
+        # for train_epoch in t:
 
-            self.optimizer.zero_grad()
-            output = model(train_X)
-            loss = -mll(output, model.train_targets)
-            loss.backward()
-            # t.set_description(f"[Train] Iter {train_epoch+1:>3}/{self.epochs} - Loss: {loss.item():>4.3f} - noise: {model.likelihood.noise.item():>4.3f}\n",refresh=False)
+        #     self.optimizer.zero_grad()
+        #     output = self.model(train_X)
+        #     loss = -mll(output, self.model.train_targets)
+        #     loss.backward()
+        #     t.set_description(f"[Train] Iter {train_epoch+1:>3}/{self.epochs} - Loss: {loss.item():>4.3f} - noise: {self.model.likelihood.noise.item():>4.3f}\n",refresh=False)
             
-            # if epoch % DISPLAY_FOR_EVERY == 0:
-            #     print(f"[Train] Iter {epoch+1:>3}/{self.epochs} - Loss: {loss.item():>4.3f} - noise: {model.likelihood.noise.item():>4.3f}")
-            # print(f"lengthscale: {model.covar_module.base_kernel.lengthscale:>4.3f}")
-            self.optimizer.step()
-        '''
+        #     # if epoch % DISPLAY_FOR_EVERY == 0:
+        #     #     print(f"[Train] Iter {epoch+1:>3}/{self.epochs} - Loss: {loss.item():>4.3f} - noise: {model.likelihood.noise.item():>4.3f}")
+        #     # print(f"lengthscale: {model.covar_module.base_kernel.lengthscale:>4.3f}")
+        #     self.optimizer.step()
+        
         # syntax: save_ckpt(model, optimizer, toy_bool, np_bool, chip, iter)
         save_ckpt(self.model, self.optimizer, False, chip, iter)
+        self.model = mll.model
         return info_dict
     
     def fitNP(self, train_X, train_Y, cfg, toy_bool=False, iter=0):
@@ -210,7 +214,7 @@ class SurrogateModel(object):
                 #         and (epoch_losses[-1] <= epoch_losses[-4]) and (epoch_losses[-1] <= epoch_losses[-5]):
                 #     break
 
-            # self.writer.add_scalar(f"Loss/train_NP_{cfg['train']['num_samples']}_samples_fitNP", loss.item(), train_epoch)
+            self.writer.add_scalar(f"Loss/train_NP_{cfg['train']['num_samples']}_samples_fitNP", loss.item(), train_epoch)
         
         # save_ckpt(self.model, self.optimizer, True, chip, iter)
 

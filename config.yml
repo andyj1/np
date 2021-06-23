@@ -6,23 +6,23 @@ train:
   num_epoch: 1
   maxiter: 100
   disp: False
-  num_candidates: 100    # number of sampling a new pair of candidates
-  display_for_every: 50 # number of lines of training state results printed
+  num_candidates: 100     # number of sampling a new pair of candidates
+  display_for_every: 50   # number of lines of training state results printed
   num_samples: 100
 
 # acquisition
-acquisition:        # by default, it uses multi-start optimization
-  option: 1         # acquisition function type: [1: UpperConfidenceBound, 2: ExpectedImprovement, 3: ProbabilityOfImprovement]
-  q: 1              # smallest number of candidates to be considered jointly; q=1 for single-outcome
-  bounds: 20        # 2xd tensor of lower and upper bounds for each column of X
-  beta: 0.5           # the smaller value, the more exploitative acquisition function becomes (UCB)
-  best_f: 0.1
-  num_restarts: 1    # number of starting points for multi-start acquisition function
-  raw_samples: 100   # number of samples for initialization
+acquisition:          # by default, it uses multi-start optimization
+  option: 1           # acquisition function type: [1: UpperConfidenceBound, 2: ExpectedImprovement, 3: ProbabilityOfImprovement]
+  q: 1                # smallest number of candidates to be considered jointly; q=1 for single-outcome
+  bounds: 20          # [2xd] tensor of lower and upper bounds for each column of X
+  beta: 0.5           # the smaller value, the more exploitative acquisition function becomes
+  best_f: 0.2
+  num_restarts: 10    # number of starting points for multi-start acquisition function
+  raw_samples: 100    # number of samples for initialization
 
 # models
 anp:
-  input_dim: 2 # context_x: 2, context_y: 1
+  input_dim: 2
   output_dim: 1
   hidden_dim: 128
   num_context: 100
@@ -33,15 +33,15 @@ np:
   r_dim: 128
   z_dim: 128
   y_dim: 1
-  num_context: 50
-  num_iter: 100
+  num_context: 100
+  num_iter: 200
 
 # toy data 
 toy:
   chip: R1005
   num_samples: 150
 
-  method: constantshift # shift, shiftPolar, tensionSimple, tension
+  method: constantshift # [constantshift, shift, shiftPolar, tensionSimple, tension]
   # pre L,W
   mu1: 0
   sigma1: 10

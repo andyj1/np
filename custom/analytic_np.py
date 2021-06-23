@@ -70,9 +70,9 @@ class AnalyticAcquisitionFunction(AcquisitionFunction, ABC):
             posterior can be single-output even if the underlying model is a
             multi-output model.
         """
-        # manipulate shape
-        # print(f'[analytic_np -> _get_posterior] input shape:', X.shape)
-        
+        print('[get posterior]:',X.shape, X.dtype) # [num_restart, raw_samples, input_dim]
+        if torch.isnan(X).any():
+            print('[get posterior]:',X)
         posterior = self.model.make_np_posterior(X)
         if self.objective is not None:
             # Unlike MCAcquisitionObjective (which transform samples), this
@@ -120,28 +120,24 @@ class UpperConfidenceBound(AnalyticAcquisitionFunction):
         if not torch.is_tensor(beta):
             beta = torch.tensor(beta)
         self.register_buffer("beta", beta)
-
+        
     @t_batch_mode_transform(expected_q=1)
     def forward(self, target_x: Tensor): # -> Tensor:
         r"""Evaluate the Upper Confidence Bound on the candidate set 'target_x'.
 
-        Args:
+        Args: 
             target_x: A `(b) x 1 x d`-dim Tensor of `(b)` t-batches of `d`-dim design
-                points each.
+                points each. [num_samples, num_restart, input_dim]
 
         Returns:
             A `(b)`-dim Tensor of Upper Confidence Bound values at the given
             design points `X`.
         """
         self.beta = self.beta.to(target_x)
-        if len(target_x.shape) == 4: target_x = target_x.squeeze(0)
-        else: target_x = target_x.permute((1,0,2))
-        print('target x:', target_x.shape)
-        posterior = self._get_posterior(X=target_x)
-        '''
-            _get_posterior from the abstract class
-            returns a GPyTorchPosterior (single-output mvn) class posterior
-        '''
+        target_x = target_x.permute((1,0,2))
+        posterior = self._get_posterior(X=target_x) # returns a GPyTorchPosterior (single-output mvn) class posterior
+        
+        # original
         # batch_shape = target_x.shape[:-2]
         # mean = posterior.mean.view(batch_shape)
         # variance = posterior.variance.view(batch_shape)
@@ -151,11 +147,13 @@ class UpperConfidenceBound(AnalyticAcquisitionFunction):
         variance = posterior.variance        
         
         delta = (self.beta.expand_as(mean) * variance).sqrt()
-        if self.maximize:
-            return mean + delta
-        else:
-            return -mean + delta
-
+        val = mean
+        if not self.maximize: # by default, maximize=True
+            val = -val
+            
+        val += delta
+        print('[analytic np] predicted:',val.shape, val.dtype)
+        return val
 
 class ExpectedImprovement(AnalyticAcquisitionFunction):
     r"""Single-outcome Expected Improvement (analytic).
@@ -231,71 +229,3 @@ class ExpectedImprovement(AnalyticAcquisitionFunction):
         updf = torch.exp(normal.log_prob(u))
         ei = sigma * (updf + u * ucdf)
         return ei
-
-class ProbabilityOfImprovement(AnalyticAcquisitionFunction):
-    r"""Single-outcome Probability of Improvement.
-
-    Probability of improvment over the current best observed value, computed
-    using the analytic formula under a Normal posterior distribution. Only
-    supports the case of q=1. Requires the posterior to be Gaussian. The model
-    must be single-outcome.
-
-    `PI(x) = P(y >= best_f), y ~ f(x)`
-
-    Example:
-        >>> model = SingleTaskGP(train_X, train_Y)
-        >>> PI = ProbabilityOfImprovement(model, best_f=0.2)
-        >>> pi = PI(test_X)
-    """
-
-    def __init__(
-        self,
-        model: Model,
-        best_f: Union[float, Tensor],
-        objective: Optional[ScalarizedObjective] = None,
-        maximize: bool = True,
-    ) -> None:
-        r"""Single-outcome analytic Probability of Improvement.
-
-        Args:
-            model: A fitted single-outcome model.
-            best_f: Either a scalar or a `b`-dim Tensor (batch mode) representing
-                the best function value observed so far (assumed noiseless).
-            objective: A ScalarizedObjective (optional).
-            maximize: If True, consider the problem a maximization problem.
-        """
-        super().__init__(mode10l=model, objective=objective)
-        self.maximize = maximize
-        if not torch.is_tensor(best_f):
-            best_f = torch.tensor(best_f)
-        self.register_buffer("best_f", best_f)
-
-    @t_batch_mode_transform(expected_q=1)
-    def forward(self, X: Tensor): # -> Tensor:
-        r"""Evaluate the Probability of Improvement on the candidate set X.
-
-        Args:
-            X: A `(b) x 1 x d`-dim Tensor of `(b)` t-batches of `d`-dim design
-                points each.
-
-        Returns:
-            A `(b)`-dim tensor of Probability of Improvement values at the given
-            design points `X`.
-        """
-        self.best_f = self.best_f.to(X)
-        posterior = self._get_posterior(X=X)
-        
-        # mean, sigma = posterior.mean, posterior.variance.sqrt()
-        
-        # modification
-        mean = posterior.mean
-        sigma = posterior.variance.sqrt()
-        
-        batch_shape = X.shape[:-2]
-        mean = posterior.mean.view(batch_shape)
-        sigma = posterior.variance.sqrt().clamp_min(1e-9).view(batch_shape)
-        u = (mean - self.best_f.expand_as(mean)) / sigma
-        if not self.maximize:
-            u = -u
-        normal = torch.distributions.Normal(torch.zeros_like(u), torch.ones_like(u))
-        return normal.cdf(u)

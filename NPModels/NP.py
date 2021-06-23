@@ -97,7 +97,7 @@ class NP(nn.Module):
         target_pred_logits = np_utils.logits_from_pred_mu(target_pred_mu, batch_size, self.device)
         logits.update({'context': context_pred_logits, 'target': target_pred_logits})
         
-        # distribution for the predicted/generated target parameters    
+        # distribution for the predicted/generated target parameters
         p_y_pred = torch.distributions.normal.Normal(target_pred_mu, target_pred_sigma)
         
         ''' set distributions and compute loss '''
@@ -118,13 +118,16 @@ class NP(nn.Module):
         # target_x needs to be of [batch_size, num_samples, dim]
         # q (z | context_x, context_y)
         # print('z:', z_samples.shape, '/ target x:',target_x.shape)
+        # print('[NP] target shape', target_x.shape) # 1 (batch_size) x 100 (num_samples) x 2 (dimensions)
         
+        print('[NP] target x:', target_x.shape, target_x.dtype)
         # test mode
         self.eval()
-        
         z_samples = self.q.rsample() # for test, sample z from prior
+        
         pred_mu, pred_sigma = self.decoder(target_x.to(self.device), z_samples)
+        # print(f'[NP] Decoder -- input: {target_x[0]}, output: {pred_mu[0]}, {pred_sigma[0]}')
         dist = torch.distributions.normal.Normal(pred_mu, pred_sigma)
-        # print('mu_target:',pred_mu.shape,'sigma_target:',pred_sigma.shape)
+        
         return dist
         

@@ -12,6 +12,7 @@ def parse_args():
     parser.add_argument('--chip', default=None, type=str, help='chip part type')
     # parser.add_argument('--not_increment_context', default=True, action='store_false', help='increments context size over iterations, instead of target size')
     parser.add_argument('--cholesky', default=False, action='store_true', help='sets boolean to use cholesky decomposition')
+    parser.add_argument('--device', default='cuda', type=str, help='device to use: either cuda or cpu')
     args = parser.parse_args()
     
     parse_end = time.time(); 

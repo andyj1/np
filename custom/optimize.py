@@ -26,7 +26,7 @@ from botorch.optim.initializers import (gen_batch_initial_conditions,
 from botorch.optim.stopping import ExpMAStoppingCriterion
 from torch import Tensor
 
-from custom.gen import gen_candidates_scipy
+from custom.gen import gen_candidates_scipy, gen_candidates_torch, get_best_candidates
 from custom.initializers import (gen_batch_initial_conditions_NP, gen_one_shot_kg_initial_conditions_NP, gen_value_function_initial_conditions_NP)
 
 
@@ -45,7 +45,7 @@ def optimize_acqf(
     return_best_only: bool = True, # calls the same procedure for exploitation step in `gen.py`
     sequential: bool = False,
     **kwargs: Any,
-):# -> Tuple[Tensor, Tensor]:
+) -> Tuple[Tensor, Tensor]:
     r"""Generate a set of candidates via multi-start optimization.
 
     Args:
@@ -99,6 +99,7 @@ def optimize_acqf(
         >>> )
 
     """
+    # ===== start of code for q > 1 ======
     if sequential and q > 1:
         if not return_best_only:
             raise NotImplementedError(
@@ -141,7 +142,9 @@ def optimize_acqf(
         # Reset acq_func to previous X_pending state
         acq_function.set_X_pending(base_X_pending)
         return candidates, torch.stack(acq_value_list)
-
+    # ===== end of code for q > 1 ======
+    
+    # # =====start of code for q == 1 ======
     options = options or {}
 
     if batch_initial_conditions is None:
@@ -159,6 +162,8 @@ def optimize_acqf(
             raw_samples=raw_samples,
             options=options,
         )
+    print('batch ic:', batch_initial_conditions)
+    
     batch_limit: int = options.get("batch_limit", num_restarts)
     batch_candidates_list: List[Tensor] = []
     batch_acq_values_list: List[Tensor] = []
@@ -180,6 +185,7 @@ def optimize_acqf(
             equality_constraints=equality_constraints,
             fixed_features=fixed_features,
         )
+        
         batch_candidates_list.append(batch_candidates_curr)
         batch_acq_values_list.append(batch_acq_values_curr)
         logger.info(f"Generated candidate batch {start_idx+1} of {len(start_idcs)}.")
@@ -194,13 +200,12 @@ def optimize_acqf(
     # exploitation
     if return_best_only:
         best = torch.argmax(batch_acq_values.view(-1), dim=0)
-        # print('best:',best)
-        batch_candidates = batch_candidates[best]
+        batch_candidates = batch_candidates[best] # get_best_candidates(batch_candidates, batch_acq_values)
         batch_acq_values = batch_acq_values[best]
 
-    if isinstance(acq_function, OneShotAcquisitionFunction):
-        if not kwargs.get("return_full_tree", False):
-            batch_candidates = acq_function.extract_candidates(X_full=batch_candidates)
+    # if isinstance(acq_function, OneShotAcquisitionFunction):
+    #     if not kwargs.get("return_full_tree", False):
+    #         batch_candidates = acq_function.extract_candidates(X_full=batch_candidates)
 
     return batch_candidates, batch_acq_values
 
@@ -277,6 +282,7 @@ def optimize_acqf_NP(
         >>> )
 
     """    
+    # ===== start of code for q > 1 ======
     if sequential and q > 1:
         if not return_best_only:
             raise NotImplementedError(
@@ -319,7 +325,9 @@ def optimize_acqf_NP(
         # Reset acq_func to previous X_pending state
         acq_function.set_X_pending(base_X_pending)
         return candidates, torch.stack(acq_value_list)
-
+    # ===== end of code for q > 1 ======
+    
+    # # =====start of code for q == 1 ======
     options = options or {}
     
     if batch_initial_conditions is None:
@@ -337,6 +345,8 @@ def optimize_acqf_NP(
             raw_samples=raw_samples,
             options=options,
         )
+    # from initializers.py
+    # print('[batch ic shape]:', batch_initial_conditions.shape) # [num_restarts, raw_samples, input_dim]
     
     batch_limit: int = options.get("batch_limit", num_restarts)
     batch_candidates_list: List[Tensor] = []
@@ -344,7 +354,6 @@ def optimize_acqf_NP(
     start_idcs = list(range(0, num_restarts, batch_limit))
     for start_idx in start_idcs:
         end_idx = min(start_idx + batch_limit, num_restarts)
-        # optimize using random restart optimization
         batch_candidates_curr, batch_acq_values_curr = gen_candidates_scipy(
             initial_conditions=batch_initial_conditions[start_idx:end_idx],
             acquisition_function=acq_function,
@@ -363,30 +372,27 @@ def optimize_acqf_NP(
         batch_candidates_list.append(batch_candidates_curr)
         batch_acq_values_list.append(batch_acq_values_curr)
         logger.info(f"Generated candidate batch {start_idx+1} of {len(start_idcs)}.")
-        # print('batch_candidates_curr:', len(batch_candidates_curr)) # [num_target]
-        # print('batch_acq_values_list:', len(batch_acq_values_curr)) # [num_target]
         
-    # print('batch_candidates_list:', len(batch_candidates_list)) # [1]
-    # print('batch_acq_values_list:', len(batch_acq_values_list)) # [1]
-    
     batch_candidates = torch.cat(batch_candidates_list)
     batch_acq_values = torch.cat(batch_acq_values_list)
-    # print(f'batch_candidates ({batch_candidates.shape})') # [num_target, batch_size, in_dim]
-    # print(f'batch_acq_values ({batch_acq_values.shape})') # [num_target, z_dim*2, out_dim]
+    
+    # print('batch_candidates:', len(batch_candidates)) # [num_restart]
+    # print('batch_acq_values:', len(batch_acq_values)) # [num_restart]
+    # print(f'[optimize] batch_candidates ({batch_candidates.shape}), {batch_candidates.dtype}') # [num_restarts, 1 ,in_dim]
+    # print(f'[optimize] batch_acq_values ({batch_acq_values.shape}), {batch_acq_values.dtype}') # [1, num_restarts, out_dim]
 
     if post_processing_func is not None:
         batch_candidates = post_processing_func(batch_candidates)
 
+    
     if return_best_only:
-        # print(batch_acq_values.view(-1).shape)
         best = torch.argmax(batch_acq_values.view(-1), dim=0)
-        # best = int(best // 20)
-        # print('best:',best)
+        # print('best:',best, batch_candidates)
         batch_candidates = batch_candidates[best]
-        batch_acq_values = batch_acq_values[best]
-
+        batch_acq_values = batch_acq_values[:, best, :]
+        # print('[best batch]:', batch_candidates, batch_acq_values)
     if isinstance(acq_function, OneShotAcquisitionFunction):
         if not kwargs.get("return_full_tree", False):
             batch_candidates = acq_function.extract_candidates(X_full=batch_candidates)
-
+    print()
     return batch_candidates, batch_acq_values
