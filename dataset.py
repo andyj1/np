@@ -22,7 +22,7 @@ def getTOYdata(cfg, model=None, device='cuda'):
     '''
     toycfg = cfg['toy']
     toy = ToyData(toycfg)
-    inputs = torch.cat([toy.preLW(), toy.preAngle(), toy.SPIcenter()], dim=1)
+    inputs = torch.cat([toy.preLW(), toy.preAngle(), toy.SPILW(), toy.SPIcenter(), toy.SPIVolumes()], dim=1)
 
     # self alignment
     global method

@@ -162,7 +162,7 @@ def optimize_acqf(
             raw_samples=raw_samples,
             options=options,
         )
-    print('batch ic:', batch_initial_conditions)
+    # print('batch ic:', batch_initial_conditions)
     
     batch_limit: int = options.get("batch_limit", num_restarts)
     batch_candidates_list: List[Tensor] = []

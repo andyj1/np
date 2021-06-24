@@ -36,26 +36,27 @@ class Acquisition(object):
         if option == 1:
             self.acq_fcn = UpperConfidenceBound(model, beta=self.beta, maximize=False)
         elif option == 2:
-            self.acq_fcn = ExpectedImprovement(model, best_f=self.best_f, maximize=True)
+            self.acq_fcn = ExpectedImprovement(model, best_f=self.best_f, maximize=False)
 
     def optimize(self, np=False):
-        # for GP
-        if np == False:
-            # if sequential is kept turned off, it performs the following
-            # 1. generate initial candidates
-            # 2. get candidates from scipy.optimize.minimize
-            candidate, acq_value = optimize_acqf(self.acq_fcn,
-                                                 bounds=self.bounds,
-                                                 q=self.q,
-                                                 num_restarts=self.num_restarts,
-                                                 raw_samples=self.raw_samples)
-        # for NP
-        else:
-            candidate, acq_value = optimize_acqf_NP(self.acq_fcn,
+        with torch.autograd.set_detect_anomaly(False):
+            # for GP
+            if np == False:
+                # if sequential is kept turned off, it performs the following
+                # 1. generate initial candidates
+                # 2. get candidates from scipy.optimize.minimize
+                candidate, acq_value = optimize_acqf(self.acq_fcn,
                                                     bounds=self.bounds,
                                                     q=self.q,
                                                     num_restarts=self.num_restarts,
                                                     raw_samples=self.raw_samples)
-            
-        # print(f'[INFO] \033[91m raw samples: {self.raw_samples}, num_restarts: {self.num_restarts} \033[0m')
+            # for NP
+            else:
+                candidate, acq_value = optimize_acqf_NP(self.acq_fcn,
+                                                        bounds=self.bounds,
+                                                        q=self.q,
+                                                        num_restarts=self.num_restarts,
+                                                        raw_samples=self.raw_samples)
+                
+            # print(f'[INFO] \033[91m raw samples: {self.raw_samples}, num_restarts: {self.num_restarts} \033[0m')
         return candidate, acq_value

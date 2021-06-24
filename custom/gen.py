@@ -132,7 +132,7 @@ def gen_candidates_scipy(
         fixed_features=fixed_features,
     )
      
-    print('[SCIPY] candidates:', candidates.shape, candidates.dtype)
+    # print('[SCIPY] candidates:', candidates.shape, candidates.dtype)
    
     clamped_candidates = columnwise_clamp(
         X=candidates, lower=lower_bounds, upper=upper_bounds, raise_on_violation=True
@@ -140,12 +140,7 @@ def gen_candidates_scipy(
     
     with torch.no_grad():
         batch_acquisition = acquisition_function(clamped_candidates)
-    # print('candidate shape:',clamped_candidates.shape)
-    # print('minimize result:',res)
-    # print('candidates:',candidates.shape)
-    # print('[SCIPY] clamped candidates:', clamped_candidates)
-    # import sys
-    # sys.exit(0)
+        
     return clamped_candidates, batch_acquisition
 
 def gen_candidates_torch(
@@ -171,10 +166,7 @@ def gen_candidates_torch(
         upper_bounds: Maximum values for each column of initial_conditions.
         optimizer (Optimizer): The pytorch optimizer to use to perform
             candidate search.
-        options: Options used to control the optimization. Includes
-            maxiter: Maximum number of iterations
-        verbose: If True, provide verbose output.
-        fixed_features: This is a dictionary of feature indices to values, where
+        options: Options used to control the optimizati    gradf = _arrayify(torch.autograd.grad(loss, X)[0].contiguous().view(-1)) indices to values, where
             all generated candidates will have features fixed to these values.
             If the dictionary value is None, then that feature will just be
             fixed to the clamped value and not optimized. Assumes values to be

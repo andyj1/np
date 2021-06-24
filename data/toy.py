@@ -6,6 +6,7 @@ class ToyData(object):
     def __init__(self, config):
         super().__init__()
         self.num_samples = config['num_samples']
+        
         # PRE L, W
         self.mu1 = config['mu1']
         self.sigma1 = config['sigma1']
@@ -19,6 +20,11 @@ class ToyData(object):
         self.mu_spi2 = config['mu_spi2']
         self.sigma_spi1 = config['sigma_spi1']
         self.sigma_spi2 = config['sigma_spi2']
+        # SPI CENTER
+        self.mu_spi_center1 = config['mu_spi_center1']
+        self.mu_spi_center2 = config['mu_spi_center2']
+        self.sigma_spi_center1 = config['sigma_spi_center1']
+        self.sigma_spi_center2 = config['sigma_spi_center2']
     
     def preLW(self):
         l = torch.normal(mean=self.mu1, std=self.sigma1, size=(self.num_samples, 1))
@@ -28,22 +34,27 @@ class ToyData(object):
     def preAngle(self):
         return torch.normal(mean=self.mu_theta, std=self.sigma_theta, size=(self.num_samples, 1))
 
-    def SPIcenter(self):
+    def SPILW(self):
         l = torch.normal(mean=self.mu_spi1, std=self.sigma_spi1, size=(self.num_samples, 1))
         w = torch.normal(mean=self.mu_spi2, std=self.sigma_spi2, size=(self.num_samples, 1))
         return torch.cat([l, w], dim=1)
-
-    def SPILW(self):
-        pass
+    
+    def SPIcenter(self):
+        l = torch.normal(mean=self.mu_spi_center1, std=self.sigma_spi_center1, size=(self.num_samples, 1))
+        w = torch.normal(mean=self.mu_spi_center2, std=self.sigma_spi_center2, size=(self.num_samples, 1))
+        return torch.cat([l, w], dim=1)
 
     def SPIVolumes(self):
-        pass
+        min_spi_vol_percentage = 0.70
+        max_spi_vol_percentage = 1.00
+        spi_vols = torch.rand(self.num_samples, 2) * (max_spi_vol_percentage - min_spi_vol_percentage) + min_spi_vol_percentage
+        return spi_vols
 
 if __name__=='__main__':
     import yaml
     with open('config.yml', 'r')  as file:
         cfg = yaml.load(file, yaml.FullLoader)
     toy = ToyData(cfg['toy'])
-    inputs = torch.cat([toy.preLW(), toy.preAngle(), toy.SPIcenter()], dim=1)
+    inputs = torch.cat([toy.preLW(), toy.preAngle(), toy.SPILW(), toy.SPIcenter(), toy.SPIVolumes()], dim=1)
     print(inputs.shape)
 

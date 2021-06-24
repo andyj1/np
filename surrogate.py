@@ -82,9 +82,9 @@ class SurrogateModel(object):
     
     def train(self, inputs, targets, args, cfg, toy_bool, iter=0):    
         if 'GP' in args.model.upper():
-            info_dict = self.fitGP(inputs[:, 0:2], targets, cfg, toy_bool=toy_bool, iter=iter)
+            info_dict = self.fitGP(inputs, targets, cfg, toy_bool=toy_bool, iter=iter)
         elif 'NP' in args.model.upper():
-            info_dict = self.fitNP(inputs[:, 0:2], targets, cfg, toy_bool=toy_bool)
+            info_dict = self.fitNP(inputs, targets, cfg, toy_bool=toy_bool)
     
     # ======================================================================================================================
     # custom GP fitting
