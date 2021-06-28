@@ -51,11 +51,14 @@ def constantshift(inputs, toycfg=None):
     '''
     outputs = None
     
-    pre_chip = inputs[:, 0:2]
     x_offset = torch.FloatTensor([50])
     y_offset = torch.FloatTensor([50])
-    post_chip = pre_chip + torch.tile(torch.FloatTensor([x_offset, y_offset]).to(inputs.device), (pre_chip.shape[0], 1))
+    xy_offsets = torch.FloatTensor([x_offset, y_offset])
     
+    pre_chip = inputs[:, 0:2] 
+    xy_offsets = xy_offsets.to(inputs.device)
+    post_chip = pre_chip + torch.tile(xy_offsets, dims=(pre_chip.shape[0], 1))
+
     if inputs.shape[1] > 2: 
         outputs = torch.cat([post_chip, inputs[:,2:]], dim=-1)
     else:
@@ -76,8 +79,8 @@ def shift(inputs, toycfg):
     x_offsets = torch.normal(mean=x_offset, std=x_noise, size=(num_samples, 1))
     y_offsets = torch.normal(mean=y_offset, std=y_noise, size=(num_samples, 1))
     xy_offsets = torch.cat([x_offsets, y_offsets], dim=-1)
-
     xy_offsets = xy_offsets.to(inputs.device)
+    
     pre_chip = inputs[:, 0:2]
     post_chip = pre_chip + xy_offsets
     
@@ -111,17 +114,16 @@ def shiftPolar(inputs, toycfg):
     #
     # issue
     #   - not adding angular offset
+    #    post_theta = torch.normal(mean=angle_offset, std=angle_noise, size=(num_samples, 1))
+    #    post_theta = post_theta.to(inputs.device)
     # ================================
     x_offsets = torch.normal(mean=x_offset, std=x_noise, size=(num_samples, 1))
     y_offsets = torch.normal(mean=y_offset, std=y_noise, size=(num_samples, 1))
     offsets = torch.cat([x_offsets, y_offsets], -1)
     
     offsets = offsets.to(inputs.device)
-    # post_theta = torch.normal(mean=angle_offset, std=angle_noise, size=(num_samples, 1))
-    # post_theta = post_theta.to(inputs.device)
     
     post_chip = pre_chip + offsets
-    
     # ================================
     # 2. total x,y offsets = positional offset ~N(distance, noise) * x,y components(cos, sin) of PRE angle
     # issue

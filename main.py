@@ -108,8 +108,10 @@ def main():
     # regr_multirf, elapsed_time = loadReflowOven(args)
     # print('[INFO] loading regressor model took: %.3f seconds' % elapsed_time)
 
-    ''' load data: inputs: [N, num_input_dim] / outputs: [N, 2] '''
+    ''' load data: inputs: [N, num_input_dim] / outputs: [N, num_input_dim] '''
     inputs, outputs, targets = load_data(cfg, args.device)
+    print(inputs.shape, outputs.shape, targets.shape)
+    sys.exit(1)
 
     ''' initialize (default) surrogate model '''    
     surrogate_params = (inputs, targets, args, cfg, writer, NUM_TRAIN_EPOCH, MODEL)

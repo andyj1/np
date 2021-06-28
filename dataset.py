@@ -121,11 +121,28 @@ if __name__=='__main__':
     with open('config.yml', 'r')  as file:
         cfg = yaml.load(file, yaml.FullLoader)
 
+    # inputs, outputs = getSineData(cfg)
+    inputs, outputs = getTOYdata(cfg)
+    print(inputs.shape, outputs.shape)
+    inputs = inputs.cpu()
+    outputs = outputs.cpu()
+    
+    from utils.self_alignment import *
+    
+    outputs = constantshift(inputs, cfg['toy'])
+    print(outputs.shape)
+    outputs = shift(inputs, cfg['toy'])
+    print(outputs.shape)
+    outputs = shiftPolar(inputs, cfg['toy'])
+    print(outputs.shape)
+    outputs = tensionSimple(inputs, cfg['toy'])
+    print(outputs.shape)
+    outputs = tension(inputs, cfg['toy'])
+    print(outputs.shape)
+    
     # model_path='./reflow_oven/models/regr_multirf_pre_all.pkl'
     # regr_multirf = joblib.load(model_path)
-
     # x_pre, y_pre, x_post, y_post = getTOYdata(cfg, regr_multirf)
-    
     # with np.printoptions(precision=3, suppress=True):
     #     print('x diff:', (x_post - x_post_est))
     #     print('y diff:', (y_post - y_post_est))
@@ -133,39 +150,30 @@ if __name__=='__main__':
     # plt.figure()
     # s = 50
     # a = 0.4
-    # plt.scatter(x_pre, y_pre, edgecolor='k',
-    #             c="navy", s=s, marker="s", alpha=a, label="PRE")
-    # plt.scatter(x_post, y_post, edgecolor='k',
-    #             c="c", s=s, marker="^", alpha=a, label='PRE')
+    # plt.scatter(x_pre, y_pre, edgecolor='k', c="navy", s=s, marker="s", alpha=a, label="PRE")
+    # plt.scatter(x_post, y_post, edgecolor='k', c="c", s=s, marker="^", alpha=a, label='PRE')
     # plt.xlabel("x (\u03BCm)")
     # plt.ylabel("y")
     # plt.title("Generated Toy Data")
     # plt.legend()
     # plt.show()
+    # plt.figure()
+    # s = 50
+    # a = 0.4
+    # plt.scatter(inputs[:,0], inputs[:,1], edgecolor='k', c="navy", s=s, marker="s", alpha=a, label="PRE")
+    # plt.scatter(outputs[:,0], outputs[:,1], edgecolor='k', c="c", s=s, marker="^", alpha=a, label='POST')
+    # # plt.scatter(inputs, outputs, edgecolor='k', c="navy", s=5, marker="s", alpha=a, label="Sine")
 
-    # inputs, outputs = getSineData(cfg)
-    inputs, outputs = getTOYdata(cfg)
-    print(inputs.shape, outputs.shape)
-    inputs = inputs.cpu()
-    outputs = outputs.cpu()
-    
-    plt.figure()
-    s = 50
-    a = 0.4
-    plt.scatter(inputs[:,0], inputs[:,1], edgecolor='k',
-                c="navy", s=s, marker="s", alpha=a, label="PRE")
-    plt.scatter(outputs[:,0], outputs[:,1], edgecolor='k',
-                c="c", s=s, marker="^", alpha=a, label='POST')
-    # plt.scatter(inputs, outputs, edgecolor='k', c="navy", s=5, marker="s", alpha=a, label="Sine")
 
-    plt.xlabel("x (\u03BCm)")
-    plt.ylabel("y")
-    plt.title(f'Generated Toy Data ({method})')
-    plt.legend()
-    # plt.xlim([-500, 500])
-    # plt.ylim([-500, 500])
-    plt.axis('equal')
-    plt.grid(linewidth=0.5)
-    plt.tight_layout()
-    plt.savefig(f'./sample_toydata_{method}.png')
-    # plt.show()
+
+    # plt.xlabel("x (\u03BCm)")
+    # plt.ylabel("y")
+    # plt.title(f'Generated Toy Data ({method})')
+    # plt.legend()
+    # plt.axis('equal')
+    # plt.grid(linewidth=0.5)
+    # plt.tight_layout()
+    # plt.savefig(f'./sample_toydata_{method}.png')
+    # # plt.xlim([-500, 500])
+    # # plt.ylim([-500, 500])
+    # # plt.show()
