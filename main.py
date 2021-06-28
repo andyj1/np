@@ -111,7 +111,6 @@ def main():
     ''' load data: inputs: [N, num_input_dim] / outputs: [N, num_input_dim] '''
     inputs, outputs, targets = load_data(cfg, args.device)
     print(inputs.shape, outputs.shape, targets.shape)
-    sys.exit(1)
 
     ''' initialize (default) surrogate model '''    
     surrogate_params = (inputs, targets, args, cfg, writer, NUM_TRAIN_EPOCH, MODEL)
