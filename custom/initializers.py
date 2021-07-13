@@ -23,19 +23,25 @@ from botorch.utils.sampling import batched_multinomial, draw_sobol_samples, manu
 from botorch.utils.transforms import standardize
 from torch import Tensor
 from torch.quasirandom import SobolEngine
+from botorch.optim.utils import fix_features
 
 import numpy as np
 
 
-def gen_batch_initial_conditions_NP(
+def gen_batch_initial_conditions_anp(
     acq_function: AcquisitionFunction,
     bounds: Tensor,
     q: int,
     num_restarts: int,
     raw_samples: int,
+    fixed_features: Optional[Dict[int, float]] = None,
     options: Optional[Dict[str, Union[bool, float, int]]] = None,
+    inequality_constraints: Optional[List[Tuple[Tensor, Tensor, float]]] = None,
+    equality_constraints: Optional[List[Tuple[Tensor, Tensor, float]]] = None,
 ) -> Tensor:
     r"""Generate a batch of initial conditions for random-restart optimziation.
+
+    TODO: Support t-batches of initial conditions.
 
     Args:
         acq_function: The acquisition function to be optimized.
@@ -45,14 +51,22 @@ def gen_batch_initial_conditions_NP(
             function optimization.
         raw_samples: The number of raw samples to consider in the initialization
             heuristic.
+        fixed_features: A map `{feature_index: value}` for features that
+            should be fixed to a particular value during generation.
         options: Options for initial condition generation. For valid options see
-            `initialize_q_batch_NP` and `initialize_q_batch_nonneg`. If `options`
+            `initialize_q_batch` and `initialize_q_batch_nonneg`. If `options`
             contains a `nonnegative=True` entry, then `acq_function` is
             assumed to be non-negative (useful when using custom acquisition
             functions). In addition, an "init_batch_limit" option can be passed
             to specify the batch limit for the initialization. This is useful
             for avoiding memory limits when computing the batch posterior over
             raw samples.
+        inequality constraints: A list of tuples (indices, coefficients, rhs),
+            with each tuple encoding an inequality constraint of the form
+            `\sum_i (X[indices[i]] * coefficients[i]) >= rhs`.
+        equality constraints: A list of tuples (indices, coefficients, rhs),
+            with each tuple encoding an inequality constraint of the form
+            `\sum_i (X[indices[i]] * coefficients[i]) = rhs`.
 
     Returns:
         A `num_restarts x q x d` tensor of initial conditions.
@@ -77,11 +91,11 @@ def gen_batch_initial_conditions_NP(
     if "eta" in options:
         init_kwargs["eta"] = options.get("eta")
     if options.get("nonnegative") or is_nonnegative(acq_function):
-        init_func = initialize_q_batch_nonneg_NP
+        init_func = initialize_q_batch_nonneg_anp
         if "alpha" in options:
             init_kwargs["alpha"] = options.get("alpha")
     else:
-        init_func = initialize_q_batch_NP
+        init_func = initialize_q_batch_anp
 
     q = 1 if q is None else q
     # the dimension the samples are drawn from
@@ -92,19 +106,36 @@ def gen_batch_initial_conditions_NP(
             f"({SobolEngine.MAXDIM}). Using iid samples instead.",
             SamplingWarning,
         )
-        
-    batch_initial_conditions = None
+
     while factor < max_factor:
         with warnings.catch_warnings(record=True) as ws:
             n = raw_samples * factor
-            if effective_dim <= SobolEngine.MAXDIM:
-                X_rnd = draw_sobol_samples(bounds=bounds, n=n, q=q, seed=seed)
+            if inequality_constraints is None and equality_constraints is None:
+                if effective_dim <= SobolEngine.MAXDIM:
+                    X_rnd = draw_sobol_samples(bounds=bounds, n=n, q=q, seed=seed)
+                else:
+                    with manual_seed(seed):
+                        # load on cpu
+                        X_rnd_nlzd = torch.rand(
+                            n, q, bounds.shape[-1], dtype=bounds.dtype
+                        )
+                    X_rnd = bounds[0] + (bounds[1] - bounds[0]) * X_rnd_nlzd
             else:
-                with manual_seed(seed):
-                    # load on cpu
-                    X_rnd_nlzd = torch.rand(n * effective_dim, dtype=bounds.dtype)
-                    X_rnd_nlzd = X_rnd_nlzd.view(n, q, bounds.shape[-1])
-                X_rnd = bounds[0] + (bounds[1] - bounds[0]) * X_rnd_nlzd
+                X_rnd = (
+                    get_polytope_samples(
+                        n=n * q,
+                        bounds=bounds,
+                        inequality_constraints=inequality_constraints,
+                        equality_constraints=equality_constraints,
+                        seed=seed,
+                        n_burnin=options.get("n_burnin", 10000),
+                        thinning=options.get("thinning", 32),
+                    )
+                    .view(n, q, -1)
+                    .cpu()
+                )
+
+            X_rnd = fix_features(X_rnd, fixed_features=fixed_features)
             with torch.no_grad():
                 if batch_limit is None:
                     batch_limit = X_rnd.shape[0]
@@ -118,7 +149,6 @@ def gen_batch_initial_conditions_NP(
                     Y_rnd_list.append(Y_rnd_curr)
                     start_idx += batch_limit
                 Y_rnd = torch.cat(Y_rnd_list)
-            
             batch_initial_conditions = init_func(
                 X=X_rnd, Y=Y_rnd, n=num_restarts, **init_kwargs
             ).to(device=device)
@@ -136,7 +166,8 @@ def gen_batch_initial_conditions_NP(
     return batch_initial_conditions
 
 
-def gen_one_shot_kg_initial_conditions_NP(
+
+def gen_one_shot_kg_initial_conditions_anp(
     acq_function: qKnowledgeGradient,
     bounds: Tensor,
     q: int,
@@ -199,7 +230,7 @@ def gen_one_shot_kg_initial_conditions_NP(
     q_aug = acq_function.get_augmented_q_batch_size(q=q)
 
     # TODO: Avoid unnecessary computation by not generating all candidates
-    ics = gen_batch_initial_conditions_NP(
+    ics = gen_batch_initial_conditions_anp(
         acq_function=acq_function,
         bounds=bounds,
         q=q_aug,
@@ -237,7 +268,7 @@ def gen_one_shot_kg_initial_conditions_NP(
     return ics
 
 
-def gen_value_function_initial_conditions_NP(
+def gen_value_function_initial_conditions_anp(
     acq_function: AcquisitionFunction,
     bounds: Tensor,
     num_restarts: int,
@@ -260,7 +291,7 @@ def gen_value_function_initial_conditions_NP(
     maximization problem. The remaining raw samples are generated using
     `draw_sobol_samples`. All raw samples are then evaluated, and the initial
     conditions are selected according to the standard initialization strategy in
-    'initialize_q_batch_NP' individually for each inner problem.
+    'initialize_q_batch_anp' individually for each inner problem.
 
     Args:
         acq_function: The value function instance to be optimized.
@@ -361,12 +392,12 @@ def gen_value_function_initial_conditions_NP(
         Y_rnd = acq_function(X_rnd)
 
     # select the restart points using the heuristic
-    return initialize_q_batch_NP(
+    return initialize_q_batch_anp(
         X=X_rnd, Y=Y_rnd, n=num_restarts, eta=options.get("eta", 2.0)
     )
 
 
-def initialize_q_batch_NP(X: Tensor, Y: Tensor, n: int, eta: float = 1.0) -> Tensor:
+def initialize_q_batch_anp(X: Tensor, Y: Tensor, n: int, eta: float = 1.0) -> Tensor:
     r"""Heuristic for selecting initial conditions for candidate generation.
 
     This heuristic selects points from `X` (without replacement) with probability
@@ -396,10 +427,10 @@ def initialize_q_batch_NP(X: Tensor, Y: Tensor, n: int, eta: float = 1.0) -> Ten
         >>> # for model with `d=6`:
         >>> qUCB = qUpperConfidenceBound(model, beta=0.1)
         >>> Xrnd = torch.rand(500, 3, 6)
-        >>> Xinit = initialize_q_batch_NP(Xrnd, qUCB(Xrnd), 10)
+        >>> Xinit = initialize_q_batch_anp(Xrnd, qUCB(Xrnd), 10)
     """
     Y = torch.squeeze(Y)
-    # print(f'[initialize_q_batch_NP] X: {X.shape}, Y: {Y.shape}') # X: [num_samples, batch_size(=1), num_dim], Y: [num_samples]    
+    # print(f'[initialize_q_batch_anp] X: {X.shape}, Y: {Y.shape}') # X: [num_samples, batch_size(=1), num_dim], Y: [num_samples]    
     
     n_samples = X.shape[0]
     batch_shape = X.shape[1:-2] or torch.Size()
@@ -448,12 +479,12 @@ def initialize_q_batch_NP(X: Tensor, Y: Tensor, n: int, eta: float = 1.0) -> Ten
         )
 
 
-def initialize_q_batch_nonneg_NP(
+def initialize_q_batch_nonneg_anp(
     X: Tensor, Y: Tensor, n: int, eta: float = 1.0, alpha: float = 1e-4
 ) -> Tensor:
     r"""Heuristic for selecting initial conditions for non-neg. acquisition functions.
 
-    This function is similar to `initialize_q_batch_NP`, but designed specifically
+    This function is similar to `initialize_q_batch_anp`, but designed specifically
     for acquisition functions that are non-negative and possibly zero over
     large areas of the feature space (e.g. qEI). All samples for which
     `Y < alpha * max(Y)` will be ignored (assuming that `Y` contains at least
@@ -478,7 +509,7 @@ def initialize_q_batch_nonneg_NP(
         >>> # for model with `d=6`:
         >>> qEI = qExpectedImprovement(model, best_f=0.2)
         >>> Xrnd = torch.rand(500, 3, 6)
-        >>> Xinit = initialize_q_batch_NP(Xrnd, qEI(Xrnd), 10)
+        >>> Xinit = initialize_q_batch_anp(Xrnd, qEI(Xrnd), 10)
     """
     n_samples = X.shape[0]
     if n > n_samples:

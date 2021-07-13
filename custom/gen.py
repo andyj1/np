@@ -86,7 +86,7 @@ def gen_candidates_scipy(
     """
     options = options or {}
     clamped_candidates = columnwise_clamp(
-        X=initial_conditions, lower=lower_bounds, upper=upper_bounds
+        initial_conditions, lower_bounds, upper_bounds
     ).requires_grad_(True)
 
     shapeX = clamped_candidates.shape
@@ -99,10 +99,7 @@ def gen_candidates_scipy(
         inequality_constraints=inequality_constraints,
         equality_constraints=equality_constraints,
     )
-    
-    # print(initial_conditions.dtype)
-    # print('[SCIPY] initial:',x0, ' bounds:',bounds)
-    # print(x0.dtype)
+
     def f(x):
         X = (
             torch.from_numpy(x)
@@ -131,17 +128,8 @@ def gen_candidates_scipy(
         X=torch.from_numpy(res.x).to(initial_conditions).view(shapeX).contiguous(),
         fixed_features=fixed_features,
     )
-     
-    # print('[SCIPY] candidates:', candidates.shape, candidates.dtype)
-   
-    clamped_candidates = columnwise_clamp(
-        X=candidates, lower=lower_bounds, upper=upper_bounds, raise_on_violation=True
-    )
-    
-    with torch.no_grad():
-        batch_acquisition = acquisition_function(clamped_candidates)
-        
-    return clamped_candidates, batch_acquisition
+    batch_acquisition = acquisition_function(candidates)
+    return candidates, batch_acquisition
 
 def gen_candidates_torch(
     initial_conditions: Tensor,
