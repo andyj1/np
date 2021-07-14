@@ -31,7 +31,7 @@ class SurrogateModel(object):
         save_img_path = f'./fig/{self.cfg["dataset"]}_{self.model_type}'
         os.makedirs(save_img_path, exist_ok=True, mode=0o755)
     
-    def train(self, train_loader, test_loader):
+    def train(self, fig, train_loader, test_loader):
         if self.model_type == 'anp':
             self.model = model.AttentiveNP(self.cfg).to(self.device)
         elif self.model_type == 'mlp':
@@ -42,16 +42,15 @@ class SurrogateModel(object):
         self.optimizer = self.optimizer_cls(self.model.parameters(), 
                                             lr=self.lr)
         
-        self.fit(train_loader, test_loader)
+        self.fit(fig, train_loader, test_loader)
         
     
-    def fit(self, train_loader, test_loader):
+    def fit(self, fig, train_loader, test_loader):
         self.model.train()
-        fig = plt.figure()
+        
         t = tqdm(range(1, self.n_epoch+1, 1), total=self.n_epoch)
         for epoch in t:
-            plt.ion()
-            plt.clf()
+            
             for batch_idx, (x, y) in enumerate(train_loader):
                 x = x.to(self.device)
                 y = y.to(self.device)
@@ -79,12 +78,15 @@ class SurrogateModel(object):
                 
                 loss.backward()
                 self.optimizer.step()
-                
-            if self.model_type == 'anp':
-                print('Epoch: {:<5} | loss: {:.6f}\tKLD: {:.6f}\tmu: {:.4f},sigma: {:.4f}'.format(epoch, loss.item() / repeat_bs, kl.mean(), mu.mean(), sigma.mean()))
-            else:
-                print('Epoch:{:<5}\tloss: {:.6f}'.format(epoch, loss.item() / repeat_bs))
+            
+            if self.cfg['verbose']:
+                if self.model_type == 'anp':
+                    print('Epoch: {:<5} | loss: {:.6f}\tKLD: {:.6f}\tmu: {:.4f},sigma: {:.4f}'.format(epoch, loss.item() / repeat_bs, kl.mean(), mu.mean(), sigma.mean()))
+                else:
+                    print('Epoch:{:<5}\tloss: {:.6f}'.format(epoch, loss.item() / repeat_bs))
             if epoch == 1 or epoch % self.test_interval == 0:
+                plt.ion()
+                plt.clf()
                 if input_dim == 1:
                     anp_utils.plot_functions(x_all.cpu().detach(),
                                             y_all.cpu().detach(),
@@ -108,7 +110,7 @@ class SurrogateModel(object):
 
                 # if epoch % 100 == 0:
                 #     plt.savefig(f'./fig/{self.cfg["dataset"]}_{self.model_type}/anp_{epoch}.png', transparent=False, edgecolor='none')
-                # plt.pause(0.001)
+                plt.pause(0.001)
         
     def adjust_learning_rate(self, init_lr, optimizer, step_num, warmup_step=4000):
         lr = init_lr * warmup_step**0.5 * min(step_num * warmup_step**-1.5, step_num**-0.5)

@@ -95,7 +95,7 @@ class AttentiveNP(nn.Module):
         return mu, sigma, log_prob, kld, loss
 
 
-    def make_anp_posterior(self, target_x):
+    def make_posterior(self, target_x):
         batch_size, target_size, _ = target_x.shape # size of all x (context+target)
         z_samples = self.prior_dist.rsample()
         z_samples = z_samples.unsqueeze(1).repeat(1, target_size, 1)
@@ -144,3 +144,9 @@ class FeedforwardMLP(nn.Module):
             loss = None
         return mu, sigma, log_prob, kld, loss
     
+    def make_posterior(self, target_x):
+        target_y_pred = self.layers(target_x)
+        mu, log_sigma = target_y_pred.chunk(chunks=2, dim=-1)
+        sigma = 0.1 + 0.9 * F.softplus(log_sigma)
+        dist = torch.distributions.Normal(mu, sigma)
+        return dist

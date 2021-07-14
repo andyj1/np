@@ -1,18 +1,23 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+# https://machinelearningmastery.com/what-is-bayesian-optimization/
 import sys
-
-import torch
-from tqdm import tqdm
-import numpy as np
-
-import data, model, trainer
-import bo_utils, parse_utils
-from surrogate import SurrogateModel
-from acquisition import Acquisition
-
 import warnings
+
+import numpy as np
+import torch
+from matplotlib import pyplot as plt
+from tqdm import tqdm
+
+import bo_utils
+import data
+import model
+import parse_utils
+import trainer
+from acquisition import Acquisition
+from surrogate import SurrogateModel
+
 warnings.filterwarnings("ignore")
 
 ''' global variables '''
@@ -67,8 +72,9 @@ if __name__ == "__main__":
     # test_loader = torch.utils.data.DataLoader(val_set, batch_size=bsz, shuffle=True, pin_memory=False, num_workers=num_workers)
     
     ''' initialize and train model '''
+    fig = plt.figure() # to plot during training steps
     surrogate = SurrogateModel(cfg=train_cfg, model_type=train_cfg['model_type'], device=device)
-    surrogate.train(train_loader, test_loader)
+    surrogate.train(fig, train_loader, test_loader)
     
     ''' mounter noise: uniformly distributed ~U(a, b) '''
     scaler = lambda x, a, b: b + (a - b) * x
@@ -82,20 +88,26 @@ if __name__ == "__main__":
     for candidate_iter in t:
         candidate_inputs, acq_value = acq_fcn.optimize()
         
-        print(candidate_inputs, acq_value)
+        print('candidate:', candidate_inputs.cpu().detach().numpy()[0], ' objective value:', acq_value.cpu().detach().numpy())
         
-        train_loader.dataset.x = np.r_['0', train_loader.dataset.x, candidate_inputs.cpu().detach().numpy()]
-        train_loader.dataset.y = np.r_['0', train_loader.dataset.y, acq_value.cpu().detach().numpy()]
+        mounter_noise = scaler(torch.rand(candidate_inputs.shape), 
+                               mounter_noise_min, 
+                               mounter_noise_max)
+        candidate_inputs += mounter_noise.to(device)
+
+        # append candidate and acq_value to dataset
+        # np.c_: fastest concatenation among [c_, stack, vstack, column_stack, concatenate]
+        train_loader.dataset.x = np.c_['0', train_loader.dataset.x, candidate_inputs.cpu().detach().numpy()]
+        train_loader.dataset.y = np.c_['0', train_loader.dataset.y, acq_value.cpu().detach().numpy()]
+        # print(train_loader.dataset.x.shape, candidate_inputs.cpu().detach().numpy().shape)
         
-        surrogate.train(train_loader, None)
-    #     candidate_inputs = candidate_inputs.to(args.device)
-    #     acq_value = acq_value.to(args.device)
-
-    #     # mounter_noise = scaler(torch.rand(candidate_inputs.shape), 
-    #     #                        mounter_noise_min, 
-    #     #                        mounter_noise_max)
-    #     # candidate_inputs += mounter_noise.to(args.device)
-
+    print('re-training...')
+    surrogate.train(fig, train_loader, None)
+    for candidate_iter in range(5):
+        candidate_inputs, acq_value = acq_fcn.optimize()
+        print('candidate:', candidate_inputs.cpu().detach().numpy()[0], ' objective value:', acq_value.cpu().detach().numpy())
+        
+        
     #     # self alignment simulation
     #     reflowoven_start = time.time()
     #     candidate_outputs, _ = reflow_oven.self_alignment(candidate_inputs, model=None, toycfg=cfg['toy']) # no model needed for toy

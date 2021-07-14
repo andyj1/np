@@ -162,7 +162,7 @@ def optimize_acqf_anp(
             options=options,
         )
     # from initializers.py
-    print('[batch ic shape]:', batch_initial_conditions.shape, batch_initial_conditions) # [num_restarts, raw_samples, input_dim]
+    # print('[batch ic shape]:', batch_initial_conditions.shape, batch_initial_conditions) # [num_restarts, raw_samples, input_dim]
     
     batch_limit: int = options.get("batch_limit", num_restarts)
     batch_candidates_list: List[Tensor] = []

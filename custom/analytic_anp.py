@@ -73,7 +73,7 @@ class AnalyticAcquisitionFunction(AcquisitionFunction, ABC):
         # manipulate shape
         # print(f'[analytic_np -> _get_posterior] input shape:', X.shape)
         
-        posterior = self.model.make_anp_posterior(X)
+        posterior = self.model.make_posterior(X)
         if self.objective is not None:
             # Unlike MCAcquisitionObjective (which transform samples), this
             # transforms the posterior
@@ -146,8 +146,8 @@ class UpperConfidenceBound(AnalyticAcquisitionFunction):
         # modification
         mean = posterior.mean
         variance = posterior.variance        
-        
         delta = (self.beta.expand_as(mean) * variance).sqrt()
+        # print('[UCB]:', mean, delta)
         if self.maximize:
             return mean + delta
         else:
