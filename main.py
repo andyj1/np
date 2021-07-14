@@ -78,10 +78,17 @@ if __name__ == "__main__":
     
     ''' mounter noise: uniformly distributed ~U(a, b) '''
     scaler = lambda x, a, b: b + (a - b) * x
-    mounter_noise_min, mounter_noise_max = acq_cfg['bounds']
+    mounter_noise_min, mounter_noise_max = train_cfg['mounter_noise']
     
     ''' BO training loop '''
+    ax = plt.gca()
     acq_fcn = Acquisition(cfg=acq_cfg, model=surrogate.model, device=device)
+    # set acquisition bound to data bounds
+    bound1 = [train_loader.dataset.x[:,0].min(), train_loader.dataset.x[:,0].max()]
+    bound2 = [train_loader.dataset.x[:,1].min(), train_loader.dataset.x[:,1].max()]
+    acq_cfg['bound1'], acq_cfg['bound2'] = bound1, bound2
+    acq_fcn.bounds = torch.stack([torch.FloatTensor([bound1[0], bound2[0]]), torch.FloatTensor([bound1[1], bound2[1]])]).to(device)
+    
     candidates_inputs, candidates_outputs = [], []
     num_candidates = int(acq_cfg['num_candidates'])
     t = tqdm(range(1, num_candidates+1, 1), total=num_candidates)
@@ -101,11 +108,19 @@ if __name__ == "__main__":
         train_loader.dataset.y = np.c_['0', train_loader.dataset.y, acq_value.cpu().detach().numpy()]
         # print(train_loader.dataset.x.shape, candidate_inputs.cpu().detach().numpy().shape)
         
-    print('re-training...')
-    surrogate.train(fig, train_loader, None)
-    for candidate_iter in range(5):
-        candidate_inputs, acq_value = acq_fcn.optimize()
-        print('candidate:', candidate_inputs.cpu().detach().numpy()[0], ' objective value:', acq_value.cpu().detach().numpy())
+        ax.scatter([candidate_inputs.cpu().detach().numpy()[0][0]], [candidate_inputs.cpu().detach().numpy()[0][1]], acq_value.cpu().detach().numpy()[0], 'o', color='red', s=5, label='candidate')
+        ax.legend(loc='best')
+        
+    plt.pause(10)
+        
+    # print('re-training...')
+    # surrogate.train(fig, train_loader, None)
+    # for candidate_iter in range(3):
+    #     candidate_inputs, acq_value = acq_fcn.optimize()
+    #     print('candidate:', candidate_inputs.cpu().detach().numpy()[0], ' objective value:', acq_value.cpu().detach().numpy()[0])
+    #     print(candidate_inputs.cpu().detach().numpy()[0][0].shape)
+    #     ax.plot(candidate_inputs.cpu().detach().numpy()[0][0], candidate_inputs.cpu().detach().numpy()[0][1], acq_value.cpu().detach().numpy()[0], 'b.', markersize=2, label='candidate')
+    #     ax.legend('best')
         
         
     #     # self alignment simulation

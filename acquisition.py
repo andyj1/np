@@ -19,9 +19,8 @@ class Acquisition(object):
         self.bounds = torch.stack(
             [torch.ones(self.dim, device=self.device) * self.cfg['bounds'][0], 
              torch.ones(self.dim, device=self.device) * self.cfg['bounds'][1]])
-        # print(self.bounds)
-        # import sys; sys.exit(1)
-
+        # self.bounds = torch.stack([torch.FloatTensor(self.cfg['bound1']), torch.FloatTensor(self.cfg['bound2'])]).to(self.device)
+    
         # UCB parameters
         self.beta = cfg['beta']
         self.q = cfg['q']
@@ -31,8 +30,8 @@ class Acquisition(object):
         self.acq_fcn = UpperConfidenceBound(model, 
                                             beta=self.beta, 
                                             objective=None,
-                                            # maximize=False)
-                                            maximize=True)
+                                            maximize=False)
+                                            # maximize=True)
         
 
     def optimize(self):

@@ -103,7 +103,6 @@ def plot_functions_2d(target_x, target_y, context_x, context_y, pred_y, std, ax)
     # plt.plot(target_x[0], pred_y[0], 'b.', linewidth=1, label='predicted')
     # plt.plot(context_x[0], context_y[0], 'g.', markersize=5, label='context')
     
-    
     ax.plot(target_x[0, :, 0], target_x[0, :, 1], pred_y[0, :, 0], 'b.', markersize=2, label='predicted')
     ax.plot(target_x[0, :, 0], target_x[0, :, 1], target_y[0, :, 0], 'k.', markersize=2, label='target')
     ax.plot(context_x[0, :, 0], context_x[0, :, 1], context_y[0, :, 0], 'g.', markersize=5, label='context')

@@ -184,7 +184,7 @@ def optimize_acqf_anp(
             equality_constraints=equality_constraints,
             fixed_features=fixed_features,
         )
-        # print('batch candidate added-----------------')
+        # print('batch candidate added-----------------',batch_candidates_curr)
         batch_candidates_list.append(batch_candidates_curr)
         batch_acq_values_list.append(batch_acq_values_curr)
         logger.info(f"Generated candidate batch {start_idx+1} of {len(start_idcs)}.")
