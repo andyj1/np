@@ -9,6 +9,7 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
+import time
 import bo_utils
 import data
 import model
@@ -64,12 +65,15 @@ if __name__ == "__main__":
         cfg=cfg        
     )
 
+    start = time.time()
     optimizer.maximize(
         init_points=train_cfg['num_samples'], # number of initial points
         n_iter=acq_cfg['num_candidates'],      # num candidates
         acq='ucb',
         kappa=acq_cfg['beta'],      # beta (smaller = more exploitative)
     )
+    end = time.time()
+    print(f'maximizing took: {(end-start):.3f} sec')
     
     # print all probed points (non-overlapping)
     # for i, res in enumerate(optimizer.res):

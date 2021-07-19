@@ -1,6 +1,6 @@
 toy:
   method: constantshift # [constantshift, shift, shiftPolar, tensionSimple, tension]
-  num_samples: 1000 # match config.ini num_samples
+  num_samples: 10000 # match config.ini num_samples
 
   # ======DATA======
   # PRE L, W

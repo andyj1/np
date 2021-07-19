@@ -125,6 +125,7 @@ class BayesianOptimization(Observable):
         # print('regressor to be fit with:\n\ttarget space params', self._space.params, '\n\ttarget space targets', self._space.target)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
+            print('re-training model...')
             if self._using_gp:
                 self.surrogate.model.fit(self._space.params, self._space.target)
             else:
