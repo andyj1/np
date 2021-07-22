@@ -27,9 +27,9 @@ class CustomData(torch.utils.data.Dataset):
         self.type = type
         self.cfg = cfg
         
-        df = self.fetch_dataframe(type)
-        self.x = df.iloc[:, :self.num_dim].values
-        self.y = df.iloc[:, self.num_dim:].values
+        self.df = self.fetch_dataframe(type)
+        self.x = self.df.iloc[:, :self.num_dim].values
+        self.y = self.df.iloc[:, self.num_dim:].values
         
         # print(self.x.shape, self.y.shape)
     def __len__(self):
@@ -50,27 +50,26 @@ class CustomData(torch.utils.data.Dataset):
             min_val, max_val = -10, 10
             
             # x: values in [min_val, max_val] in random order
-            rng = np.random.default_rng(42)
-            
-            x = rng.random(size=(self.num_samples, self.num_dim)) * (max_val-min_val) + min_val
+            x = np.random.random(size=(self.num_samples, self.num_dim)) * (max_val-min_val) + min_val
             x = pd.DataFrame(x, columns=[i+1 for i in range(self.num_dim)]).astype(np.float32)
             # y = x ** 2
             y = x.apply(lambda x: x**2).sum(axis=1).rename('sphere').astype(np.float32)
         
-        elif type == 'toy':
-            # self.num_dim = 2
-            
+        elif type == 'toy':            
             toy = toydata.ToyData()
-            # x = torch.cat([toy.preLW(), ... ], dim=1)
-            x = toy.preLW()
-            x, method = self_alignment.self_alignment(x)
+            x = torch.cat([toy.preLW(), toy.preAngle(), toy.SPIcenter(), toy.SPILW(), toy.SPIVolumes()], dim=1) # multi-dim input
+            x = x[:, :self.num_dim]
+            self.num_dim = x.shape[1]
+            if self.num_dim > 2:
+                x_shifted, method = self_alignment.self_alignment(x[:, :2])
+                x = torch.cat((x_shifted, x[:, 2:]), dim=-1)
+            elif self.num_dim == 2:
+                x, method = self_alignment.self_alignment(x)
             x = pd.DataFrame(x, columns=[i+1 for i in range(self.num_dim)]).astype(np.float32)
-            # y = pd.DataFrame(y, columns=['y']).astype(np.float32)
             y = x.apply(np.linalg.norm, axis=1).astype(np.float32)  # objective: L-2 norm
             
         elif type == 'sine':
-            self.num_dim = 1
-            rng = np.random.default_rng()
+            # self.num_dim = 1
             
             sin_amp1 = self.cfg['sin_amp1']
             sin_freq1 = self.cfg['sin_freq1']
@@ -95,7 +94,7 @@ class CustomData(torch.utils.data.Dataset):
 
         df =  pd.concat((x, y), axis=1)
         # print('data shape:', df.shape)
-        return df  # .reset_index(drop=True, inplace=True)
+        return df
 
 
 # template custom dataset class

@@ -23,7 +23,7 @@ def parse():
     
     # system level argument parser
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', '-d', default='sine', type=str, help='specify a dataset: [sine or parabola]')
+    parser.add_argument('--dataset', '-d', default=None, type=str, help='specify a dataset: [sine or parabola]')
     parser.add_argument('--verbose', '-v', default=False, action='store_true', help='by default, all outputs are suppressed')
     parser.add_argument('--visualize' , '-vis', default=False, action='store_true', help='turns on visualization during training')
     parser.add_argument('--random_state' ,'-rs', default=1, type=int, help='random state')

@@ -13,9 +13,20 @@ def self_alignment(x1, x2=None):
         x1 = torch.FloatTensor([x1]).unsqueeze(1)
         x2 = torch.FloatTensor([x2]).unsqueeze(1)
         x1 = torch.cat((x1, x2), dim=1)
-    assert x1.shape[1] == 2
+    
+    if x1.shape[1] > 2:
+        x1 = x1[:, 0:2]
+        
+    if type(x1) == np.ndarray:
+        x1 = torch.FloatTensor(x1)
+    assert type(x1) == torch.Tensor, type(x1)
     shifted_outputs = globals()[method](inputs=x1)
     
+    if x1.shape[1] > 2:
+        shifted_outputs = torch.cat((shifted_outputs, x1[:, 2:]), dim=-1)
+    
+    # print('self alignment:', x1, '-->', shifted_outputs)
+    # print(shifted_outputs.shape)
     return shifted_outputs, method
 
 # ================ SHIFT IN X AND Y DIRECTIONS ONLY ================
