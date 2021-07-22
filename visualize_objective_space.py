@@ -63,6 +63,6 @@ def plot_grid(fig, ax, x, y, bound_min, bound_max, save_image_path, iteration, n
     
     # ax.set_title('example')
     # ax.legend(loc='best')
-    plt.title(f'{num_dim}-D GPR: minimize POST distance (iter: {iteration})')
-    plt.savefig(os.path.join(save_image_path, f'{iteration}.png'))
+    plt.title(f'{num_dim}-D GPR: minimize POST distance (iter: {iteration+1})')
+    plt.savefig(os.path.join(save_image_path, f'{iteration+1}.png'))
     return ax

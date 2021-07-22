@@ -41,8 +41,8 @@ if __name__ == '__main__':
 	save_image_path = './fig_botorch'
 	os.makedirs(save_image_path, exist_ok=True, mode=0o755)
  
+	# if num_dim == 2:
 	iteration = 0
-	# if inputs.shape[1] == 2:
 	ax = plot_grid(fig, ax, inputs[:, 0], inputs[:, 1], bound_min, bound_max, save_image_path, iteration, num_dim)
 	plt.colorbar()
 	plt.pause(0.001)
@@ -68,8 +68,7 @@ if __name__ == '__main__':
 		UCB, bounds=bounds, q=1, num_restarts=5, raw_samples=20,
 		)
 		end_time = time.time()
-		print("iter %d | data size : %d, elapsed time : %.4f" % 
-        		(t_iter, inputs.shape[0], end_time - start_time))
+		print(f'iter {t_iter+1} | data size: {inputs.shape[0]}, elapsed time: {(end_time-start_time):.4f} sec')
 		candidate = candidate.to(device)
   
 		inputs = torch.vstack((inputs, candidate))
@@ -79,9 +78,8 @@ if __name__ == '__main__':
 		# print(candidate)
   
 		candidate = candidate.cpu().numpy()
-		# if inputs.shape[1] == 2:
 		plt.scatter(candidate[0][0], candidate[0][1], s=50, marker='x', c='k', label='candidate')
-		
+		# if num_dim == 2:
 		ax = plot_grid(fig, ax, inputs[:, 0], inputs[:, 1], bound_min, bound_max, save_image_path, iteration, num_dim)
 		plt.legend()
 		plt.pause(0.001)
