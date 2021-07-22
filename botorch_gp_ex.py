@@ -15,7 +15,6 @@ import parse_utils
 from toy import self_alignment
 from visualize_objective_space import plot_grid
 
-train_sample = 100
 test_iter = 50
 
 if __name__ == '__main__':
@@ -70,7 +69,7 @@ if __name__ == '__main__':
 		inputs_shifted, method = self_alignment.self_alignment(inputs)
 		outputs = xy_to_L2distance(inputs_shifted)
 
-		print(candidate)
+		# print(candidate)
   
 		# if inputs.shape[1] == 2:
 		plt.scatter(candidate[0][0], candidate[0][1], s=50, marker='x', c='k', label='candidate')
