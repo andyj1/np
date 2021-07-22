@@ -35,24 +35,24 @@ def f(x, y):
     # print(distances)
     return distances
 
-def plot_grid(fig, ax, x, y, bound_min, bound_max, save_image_path, iteration):
-    x = x.numpy()
-    y = y.numpy()
+def plot_grid(fig, ax, x, y, bound_min, bound_max, save_image_path, iteration, num_dim):
+    x = x.cpu().numpy()
+    y = y.cpu().numpy()
     
     steps = 100
-    x = torch.linspace(bound_min, bound_max, steps)
-    y = torch.linspace(bound_min, bound_max, steps)
-    z = f(x,y)
+    x_linspace = torch.linspace(bound_min, bound_max, steps)
+    y_linspace = torch.linspace(bound_min, bound_max, steps)
+    z = f(x_linspace, y_linspace)
 
     # fig, ax = plt.subplots()
     z_min, z_max = z.min(), z.max() #-np.abs(z).max(), np.abs(z).max()
     # cmaps: 'PiYG', 'PRGn', 'BrBG', 'PuOr', 'RdGy', 'RdBu','RdYlBu', 'RdYlGn', 'Spectral', 'coolwarm', 'bwr', 'seismic'
     c = plt.imshow(z, cmap ='Spectral', 
                 vmin = z_min,
-                vmax = z_max, extent =[x.min(),
-                                        x.max(),
-                                        y.min(),
-                                        y.max()],
+                vmax = z_max, extent =[x_linspace.min(),
+                                        x_linspace.max(),
+                                        y_linspace.min(),
+                                        y_linspace.max()],
                 interpolation ='nearest', 
                 origin ='lower',
                 label='density')
@@ -63,5 +63,6 @@ def plot_grid(fig, ax, x, y, bound_min, bound_max, save_image_path, iteration):
     
     # ax.set_title('example')
     # ax.legend(loc='best')
+    plt.title(f'{num_dim}-D GPR: minimize POST distance (iter: {iteration})')
     plt.savefig(os.path.join(save_image_path, f'{iteration}.png'))
     return ax

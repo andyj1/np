@@ -43,7 +43,7 @@ def constantshift(inputs):
     y_offset = torch.FloatTensor([5])
     
     xy_offsets = torch.FloatTensor([x_offset, y_offset])
-    post_chip = inputs + torch.tile(xy_offsets, dims=(inputs.shape[0], 1))
+    post_chip = inputs + torch.tile(xy_offsets, dims=(inputs.shape[0], 1)).to(inputs.device)
 
     # if inputs.shape[1] > 2: 
     #     outputs = torch.cat([post_chip, inputs[:,2:]], dim=-1)
