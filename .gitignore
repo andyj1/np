@@ -1,4 +1,5 @@
 # omit files
+fig_botorch/*
 data/*.csv
 reflow_oven/*/*/*
 reflow_oven/models_2var/*

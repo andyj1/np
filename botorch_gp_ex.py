@@ -18,9 +18,9 @@ from visualize_objective_space import plot_grid
 test_iter = 50
 
 if __name__ == '__main__':
-	device = torch.device('cuda')
- 
 	cfg, args = parse_utils.parse()
+ 
+	device = torch.device(cfg['train_cfg']['device'])
 	train_cfg, data_cfg, acq_cfg = cfg['train_cfg'], cfg['data_cfg'], cfg['acq_cfg']
 	num_samples = cfg['train_cfg']['num_samples']
 	num_workers = cfg['train_cfg']['num_workers']
@@ -44,7 +44,6 @@ if __name__ == '__main__':
 	# if num_dim == 2:
 	iteration = 0
 	ax = plot_grid(fig, ax, inputs[:, 0], inputs[:, 1], bound_min, bound_max, save_image_path, iteration, num_dim)
-	plt.colorbar()
 	plt.pause(0.001)
 	iteration += 1
  
