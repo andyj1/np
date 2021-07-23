@@ -36,6 +36,7 @@ def f(x, y):
     return distances
 
 def plot_grid(fig, ax, x, y, bound_min, bound_max, save_image_path, iteration, num_dim):
+    device = x.device
     x = x.cpu().numpy()
     y = y.cpu().numpy()
     
@@ -64,5 +65,5 @@ def plot_grid(fig, ax, x, y, bound_min, bound_max, save_image_path, iteration, n
     # ax.set_title('example')
     # ax.legend(loc='best')
     plt.title(f'{num_dim}-D GPR: minimize POST distance (iter: {iteration+1})')
-    plt.savefig(os.path.join(save_image_path, f'{num_dim}_{len(x)}_{iteration+1}_cpu.png'))
+    plt.savefig(os.path.join(save_image_path, f'{device}_{num_dim}_{len(x)}_{iteration+1}.png'))
     return ax
