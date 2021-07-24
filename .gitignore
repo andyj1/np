@@ -1,19 +1,7 @@
 # omit files
+todo.md
 fig_botorch/*
 data/*.csv
-reflow_oven/*/*/*
-reflow_oven/models_2var/*
-reflow_oven/models_5var/*
-data_analysis/*.pkl
-data_analysis/*.p
-runs/
-NPModels/ref_*/
-initial_ref/
-*.p
-*.pkl
-
-# omit checkpoints
-*.pt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
