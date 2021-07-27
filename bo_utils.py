@@ -28,13 +28,27 @@ def setup():
 def black_box_function(x1, x2): 
     # add self-alignment to shift PRE to POST
     shifted_xs, method = self_alignment.self_alignment(x1, x2)
-    x1, x2 = torch.chunk(shifted_xs, chunks=2, dim=1)
+    x1, x2 = torch.chunk(shifted_xs, chunks=2, dim=-1)
     
     # add mounter noise
-    x1 += scaler(torch.rand(x1.shape), mounter_noise_min, mounter_noise_max)
-    x2 += scaler(torch.rand(x1.shape), mounter_noise_min, mounter_noise_max)
+    # x1 += scaler(torch.rand(x1.shape), mounter_noise_min, mounter_noise_max)
+    # x2 += scaler(torch.rand(x1.shape), mounter_noise_min, mounter_noise_max)
     
-    norm_distance = np.linalg.norm((x1, x2))
+    norm_distance = torch.zeros(x1.shape)
+    for i in range(norm_distance.shape[0]):
+        point = torch.FloatTensor([x1[i], x2[i]])
+        norm_distance[i] = torch.linalg.norm(point, dtype=torch.float64)
+        # print(point, norm_distance[i])
     # at this point, utility (acq func) only maximizes,
     # so negate this to minimize
+    
+    # distance: objective over sample space
     return -norm_distance
+
+if __name__ == '__main__':
+    
+    x1 = torch.ones(100, 1)*40
+    x2 = torch.ones(100, 1)*10
+    dist = black_box_function(x1, x2)
+    print(x1.shape, x2.shape, dist.shape)
+    print('sample:', x1[1:2], x2[1:2], '-->', dist[1:2])

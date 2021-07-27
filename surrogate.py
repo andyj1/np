@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 import anp_utils
 import model
-from bayes_opt_custom import util
+from bayesopt_custom import util
 import data
 
 

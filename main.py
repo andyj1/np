@@ -19,7 +19,7 @@ from acquisition import Acquisition
 from surrogate import SurrogateModel
 import bo_utils
 
-from bayesian_optimization import BayesianOptimization
+from bayesopt import BayesianOptimization
     
 warnings.filterwarnings("ignore")
 
@@ -53,13 +53,12 @@ if __name__ == "__main__":
     # ---------------------------------------
     
     # Bounded region of parameter space
-    # pbounds = {'x1': (-10, 10), 'x2': (-10, 10)}
-    pbounds = dict(zip(['x1','x2'], [tuple(acq_cfg['bounds1']), tuple(acq_cfg['bounds2'])]))
+    pbounds = dict(zip(['x1','x2'], [tuple(acq_cfg['bounds1']), tuple(acq_cfg['bounds2'])])) # {'x1': (-10, 10), 'x2': (-10, 10)}
     
     optimizer = BayesianOptimization(
-        f=bo_utils.black_box_function,  # objective
-        pbounds=pbounds,                # bound within which samples are randomly selected to optimize acquisitionz
-        verbose=2, # verbose = 1 prints only when a maximum is observed, verbose = 0 is silent
+        f=bo_utils.black_box_function,  # objective to minimize
+        pbounds=pbounds,                # bound within which samples are randomly selected to optimize acquisition
+        verbose=2,                      # verbose = 1 prints only when a maximum is observed, verbose = 0 is silent
         random_state=train_cfg['random_state'],
         surrogate=surrogate,
         cfg=cfg        

@@ -9,9 +9,9 @@ from matplotlib.colors import LogNorm
 
 from toy import self_alignment
 
-xy_to_L2distance = lambda inputs: torch.linalg.norm(inputs, dim=1)
 
 def f(x, y):
+    # x, y: vector (each of which is sample size)
     x_grid_pre, y_grid_pre = torch.meshgrid(x, y)
     
     # self-alignment
@@ -23,6 +23,9 @@ def f(x, y):
     x_shifted = xy_shifted[:, 0]
     y_shifted = xy_shifted[:, 1]
     
+    # distance
+    xy_to_L2distance = lambda inputs: torch.linalg.norm(inputs, dtype=torch.float64)
+    
     # prepare grid space
     x_grid_post, y_grid_post = torch.meshgrid(x_shifted, y_shifted)
     distances = torch.zeros(x_grid_pre.shape, dtype=torch.float32)
@@ -31,18 +34,22 @@ def f(x, y):
         for j in range(x_grid_pre.shape[1]):
             # append POST distance
             point = torch.FloatTensor([x_grid_post[i,j], y_grid_post[i,j]])
-            distances[i,j] = torch.linalg.norm(point, dtype=torch.float32)
-    # print(distances)
+            distances[i,j] = torch.linalg.norm(point, dtype=torch.float64)
+    
+    # distance: objective over meshgrid space
     return distances
 
-def plot_grid(fig, ax, x, y, bound_min, bound_max, save_image_path, iteration, num_dim):
-    device = x.device
-    x = x.cpu().numpy()
-    y = y.cpu().numpy()
+def plot_grid(ax, x, y, pbounds, num_dim, model_type, iteration=None):
+    x_min, x_max = pbounds[0]
+    y_min, y_max = pbounds[1]
+    
+    if torch.is_tensor(x) and torch.is_tensor(y):
+        x = x.cpu().numpy()
+        y = y.cpu().numpy()
     
     steps = 100
-    x_linspace = torch.linspace(bound_min, bound_max, steps)
-    y_linspace = torch.linspace(bound_min, bound_max, steps)
+    x_linspace = torch.linspace(x_min, x_max, steps)
+    y_linspace = torch.linspace(y_min, y_max, steps)
     z = f(x_linspace, y_linspace)
 
     # fig, ax = plt.subplots()
@@ -64,6 +71,17 @@ def plot_grid(fig, ax, x, y, bound_min, bound_max, save_image_path, iteration, n
     
     # ax.set_title('example')
     # ax.legend(loc='best')
-    plt.title(f'{num_dim}-D GPR: minimize POST distance (iter: {iteration+1})')
-    plt.savefig(os.path.join(save_image_path, f'{device}_{num_dim}_{len(x)}_{iteration+1}.png'))
+    if iteration is not None:
+        plt.title(f'{num_dim}-D {model_type.upper()}: minimize POST distance (iter: {iteration})')
+    else:
+        plt.title(f'{num_dim}-D {model_type.upper()}: minimize POST distance')
     return ax
+
+
+if __name__ == '__main__':
+    
+    x1 = torch.ones(100, 1)*40
+    x2 = torch.ones(100, 1)*10
+    dist = f(x1.squeeze(-1), x2.squeeze(-1))
+    # print('sample:', x1[1:2], x2[1:2], '-->', dist[1:2])
+    print(x1.shape, x2.shape, dist.shape)

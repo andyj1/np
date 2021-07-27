@@ -34,6 +34,7 @@ def parse():
     # modifications / conditions to cfg (since only cfg is carried along in the process)
     if args.dataset == 'sine': train_cfg['x_dim'] = 1
     elif args.dataset == 'parabola': assert train_cfg['x_dim'] in [1, 2]
+    
     train_cfg['verbose'] = args.verbose
     train_cfg['visualize'] = args.visualize
     acq_cfg['input_dim'] = train_cfg['x_dim']    
