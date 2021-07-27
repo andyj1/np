@@ -274,10 +274,10 @@ class TargetSpace(object):
                 # ax.legend(loc='best')
                 # ax.view_init(elev=15, azim=-45)
                 ax.grid(False)
-                ax.set_title(ax.get_title()[:-9] + f"(iter: {self._plot_iteration})")    
+                ax.set_title(ax.get_title().split('(iter')[0] + f" (iter: {self._plot_iteration+1})")    
                 # plt.pause(0.00001)
             
-                plt.savefig(f"fig/{self.cfg['train_cfg']['x_dim']}dim_{self.cfg['train_cfg']['model_type']}_{self.cfg['train_cfg']['num_samples']}init_{self._plot_iteration}iter.png")
+                plt.savefig(f"fig/{self.cfg['train_cfg']['x_dim']}dim_{self.cfg['train_cfg']['model_type']}_{self.cfg['train_cfg']['num_samples']}init_{self._plot_iteration+1}iter.png")
                 
                 self._plot_iteration += 1
         return target

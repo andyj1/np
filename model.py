@@ -96,6 +96,7 @@ class AttentiveNP(nn.Module):
             loss = None
         return mu, sigma, log_prob, kld, loss
 
+    '''
     # for BoTorch acquisition: no longer used
     def make_posterior(self, target_x):
         batch_size, target_size, _ = target_x.shape # size of all x (context+target)
@@ -107,7 +108,7 @@ class AttentiveNP(nn.Module):
         decoded_dist, mu, sigma = self.decoder(self.representation.mean(dim=1).unsqueeze(1), z_samples, target_x)
         return decoded_dist
     
-    # black box function: refer to main.py
+    # black box function (refer to main.py): no longer used
     def black_box_function(self, x1, x2):
         x1 = torch.FloatTensor(x1)
         target_x = torch.cat([x1, x2], dim=-1)
@@ -116,6 +117,7 @@ class AttentiveNP(nn.Module):
         z_samples = z_samples.unsqueeze(1).repeat(1, target_size, 1)
         _, mu, sigma = self.decoder(self.representation.mean(dim=1).unsqueeze(1), z_samples, target_x)
         return mu.cpu().detach().numpy()
+    '''
     
     # required for utility function (acquisition)
     def predict(self, target_x, return_std=True):
