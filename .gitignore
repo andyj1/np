@@ -1,7 +1,11 @@
 # omit files
 todo.md
+fig/*
 fig_botorch/*
-data/*.csv
+datasets/*
+bo_example_gmlee/*
+reflow_oven/*
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

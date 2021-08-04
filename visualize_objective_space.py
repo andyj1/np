@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-
-import os
-
+import configparser
 import matplotlib.pyplot as plt
-import numpy as np
 import torch
-from matplotlib.colors import LogNorm
 
 from toy import self_alignment
 
+cfg = configparser.ConfigParser()
+cfg.read('config.ini')
+
+stripped = cfg.items('train')[-1][1].strip('[],')
+mounter_noise_min, mounter_noise_max = int(stripped[0]), int(stripped[3:])
+
+# mounter noise: uniformly distributed ~U(a, b)
+scaler = lambda x, a, b: b + (a - b) * x
 
 def f(x, y):
     # x, y: vector (each of which is sample size)
@@ -20,11 +24,13 @@ def f(x, y):
         y = y.unsqueeze(-1)
     xy = torch.cat((x, y), 1)
     xy_shifted, method = self_alignment.self_alignment(xy)
-    x_shifted = xy_shifted[:, 0]
-    y_shifted = xy_shifted[:, 1]
+    x_shifted, y_shifted = torch.chunk(xy_shifted, chunks=2, dim=1)
+    x_shifted = x_shifted.squeeze()
+    y_shifted = y_shifted.squeeze()
     
-    # distance
-    xy_to_L2distance = lambda inputs: torch.linalg.norm(inputs, dtype=torch.float64)
+    # add mounter noise
+    # x_shifted += scaler(torch.rand(x_shifted.shape), mounter_noise_min, mounter_noise_max)
+    # y_shifted += scaler(torch.rand(y_shifted.shape), mounter_noise_min, mounter_noise_max)
     
     # prepare grid space
     x_grid_post, y_grid_post = torch.meshgrid(x_shifted, y_shifted)
@@ -37,6 +43,7 @@ def f(x, y):
             distances[i,j] = torch.linalg.norm(point, dtype=torch.float64)
     
     # distance: objective over meshgrid space
+    # return distances as-is, because we are showing it as a gradient map
     return distances
 
 def plot_grid(ax, x, y, pbounds, num_dim, model_type, iteration=None):
@@ -72,16 +79,36 @@ def plot_grid(ax, x, y, pbounds, num_dim, model_type, iteration=None):
     # ax.set_title('example')
     # ax.legend(loc='best')
     if iteration is not None:
-        plt.title(f'{num_dim}-D {model_type.upper()}: minimize POST distance (iter: {iteration})')
+        ax.set_title(f'{num_dim}-D {model_type.upper()}: minimize POST distance ({iteration})')
     else:
-        plt.title(f'{num_dim}-D {model_type.upper()}: minimize POST distance')
+        ax.set_title(f'{num_dim}-D {model_type.upper()}: minimize POST distance')
     return ax
 
 
 if __name__ == '__main__':
+    from datasets.reflow_soldering.create_self_alignment_model import customMOM4chipsample
+    import pandas as pd
+    import numpy as np
     
-    x1 = torch.ones(100, 1)*40
-    x2 = torch.ones(100, 1)*10
-    dist = f(x1.squeeze(-1), x2.squeeze(-1))
+    df = pd.read_csv('./datasets/spi_clustered.csv').drop(['Unnamed: 0'], axis=1)
+    df.reset_index(drop=True, inplace=True)
+    assert df.isnull().sum().sum() == 0, 'there is a NULL value in the loaded data'
+    
+    chip = 'R1005'
+    input_vars = ['PRE_L','PRE_W']
+    output_vars = ['POST_L','POST_W']
+    vars = input_vars+output_vars
+    
+    xy = customMOM4chipsample(df, input_vars=vars, num_samples=100, chiptype=chip, random_state=42).rename(columns={'PRE_L': 0, 'PRE_W': 1, 'POST_L': 2, 'POST_W': 3})                
+    y = xy.iloc[:, 2:].apply(np.linalg.norm, axis=1).astype(np.float32)  # objective: L-2 norm
+    x1, x2 = torch.from_numpy(xy.iloc[:, 0].to_numpy()), torch.from_numpy(xy.iloc[:, 1].to_numpy())
+    dist = f(x1, x2)
+    
+    
+    
+    # x1 = torch.ones(100, 1)*40
+    # x2 = torch.ones(100, 1)*10
+    # dist = f(x1.squeeze(-1), x2.squeeze(-1))
     # print('sample:', x1[1:2], x2[1:2], '-->', dist[1:2])
     print(x1.shape, x2.shape, dist.shape)
+    

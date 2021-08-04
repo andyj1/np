@@ -1,17 +1,15 @@
 import math
+import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-import torch.utils.data as data
-from torchvision import datasets as ds
 from torchvision import transforms as transforms
-from yaml.error import YAMLError
 
 import anp_utils
-import bo_utils
 from toy import self_alignment, toydata
+
 
 # only consider 1-D in this case
 class CustomData(torch.utils.data.Dataset):
@@ -39,9 +37,42 @@ class CustomData(torch.utils.data.Dataset):
         return self.x[idx], self.y[idx]
 
     def fetch_dataframe(self, type):
-        assert type in ['parabola','sine', 'toy']
+        assert type in ['toy', 'parabola', 'sine', 'mom4']
         
-        if type == 'parabola':
+        if type == 'toy':
+            toy = toydata.ToyData()
+            x = torch.cat([toy.preLW(), toy.preAngle(), toy.SPIcenter(), toy.SPILW(), toy.SPIVolumes()], dim=1) # multi-dim input
+            x = x[:, :self.num_dim]
+            self.num_dim = x.shape[1]
+            
+            # apply self alignment only on the first two: L, W
+            if self.num_dim > 2:
+                x_shifted, method = self_alignment.self_alignment(x[:, :2])
+                x = torch.cat((x_shifted, x[:, 2:]), dim=-1)
+            elif self.num_dim == 2:
+                x, method = self_alignment.self_alignment(x)
+            x = pd.DataFrame(x, columns=[i+1 for i in range(self.num_dim)]).astype(np.float32)
+            y = x.iloc[:, :2].apply(np.linalg.norm, axis=1).astype(np.float32)  # objective: L-2 norm
+        
+        elif type == 'mom4':            
+            from datasets.reflow_soldering.create_self_alignment_model import customMOM4chipsample
+            
+            df = pd.read_csv('./datasets/spi_clustered.csv').drop(['Unnamed: 0'], axis=1)
+            df.reset_index(drop=True, inplace=True)
+            assert df.isnull().sum().sum() == 0, 'there is a NULL value in the loaded data'
+            
+            chip = 'R1005'
+            input_vars = ['PRE_L','PRE_W']
+            output_vars = ['POST_L','POST_W']
+            vars = input_vars+output_vars
+            
+            xy = customMOM4chipsample(df, input_vars=vars, num_samples=self.num_samples, chiptype=chip, random_state=42).rename(columns={'PRE_L': 0, 'PRE_W': 1, 'POST_L': 2, 'POST_W': 3})
+                        
+            x = xy.iloc[:, :self.num_dim]
+            y = xy.iloc[:, self.num_dim:].apply(np.linalg.norm, axis=1).astype(np.float32)  # objective: L-2 norm
+            
+            
+        elif type == 'parabola':
             # self.num_dim = 1 or 2
             ''' 
                 sphere: https://www.sfu.ca/~ssurjano/Code/spherefm.html 
@@ -54,19 +85,6 @@ class CustomData(torch.utils.data.Dataset):
             x = pd.DataFrame(x, columns=[i+1 for i in range(self.num_dim)]).astype(np.float32)
             # y = x ** 2
             y = x.apply(lambda x: x**2).sum(axis=1).rename('sphere').astype(np.float32)
-        
-        elif type == 'toy':            
-            toy = toydata.ToyData()
-            x = torch.cat([toy.preLW(), toy.preAngle(), toy.SPIcenter(), toy.SPILW(), toy.SPIVolumes()], dim=1) # multi-dim input
-            x = x[:, :self.num_dim]
-            self.num_dim = x.shape[1]
-            if self.num_dim > 2:
-                x_shifted, method = self_alignment.self_alignment(x[:, :2])
-                x = torch.cat((x_shifted, x[:, 2:]), dim=-1)
-            elif self.num_dim == 2:
-                x, method = self_alignment.self_alignment(x)
-            x = pd.DataFrame(x, columns=[i+1 for i in range(self.num_dim)]).astype(np.float32)
-            y = x.apply(np.linalg.norm, axis=1).astype(np.float32)  # objective: L-2 norm
             
         elif type == 'sine':
             # self.num_dim = 1
@@ -99,6 +117,9 @@ class CustomData(torch.utils.data.Dataset):
 
 # template custom dataset class
 class TemplateDataset(torch.utils.data.Dataset):
+    '''
+    used in surrogate.py when preprocessing into dataloaders to re-train
+    '''
     def __init__(self, x, y):
         super(TemplateDataset, self).__init__()
         """
@@ -162,7 +183,7 @@ if __name__ == '__main__':
     sample_batch = next(iter(dataloader))
     x, y = sample_batch[0], sample_batch[1]
     print('[x, y]:', x.shape, y.shape)
-    
+  
     print('='*10, 'toy data','='*10, )
     total_count = 1000
     context_count = 200
@@ -174,45 +195,66 @@ if __name__ == '__main__':
     x, y = sample_batch[0], sample_batch[1]
     print('[x, y]:', x.shape, y.shape)
     
-    #==================================================================
-    context_count = 50
-    context_idx, target_idx = anp_utils.context_target_split(total_count, context_count)
-    batch = 1
-    x = x.expand(batch, -1, -1)
-    y = y.expand(batch, -1, -1)
-    x_context, y_context = x[:, context_idx, :], y[:,  context_idx, :]
-    x_target, y_target = x[:, target_idx, :], y[:, target_idx, :]
-    x_all = torch.cat([x_context, x_target], dim=1) # dim 1: num_samples
-    y_all = torch.cat([y_context, y_target], dim=1) # dim 1: num_samples
+    print('='*10, 'mom4 data','='*10, )
+    total_count = 1000
+    context_count = 200
+    datatype = 'mom4'
+    dataset = CustomData(input_dim=2, num_samples=total_count, type=datatype, cfg=data_cfg)
+    bsz = len(dataset)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=bsz, shuffle=True, num_workers=4)
+    sample_batch = next(iter(dataloader))
+    x, y = sample_batch[0], sample_batch[1]
+    print('[x, y]:', x.shape, y.shape)
     
-    # anp_utils.plot_functions(x_target, y_target, x_context, y_context, y_target, 0)
-    
-    x_all = x_all[0].unsqueeze(0)
-    y_all = y_all[0].unsqueeze(0)
-    x_context = x_context[0].unsqueeze(0)
-    y_context = y_context[0].unsqueeze(0)
-
-    order = torch.argsort(x_context, dim=1)[0, :,0]
-    x_context = x_context[:, order, :]
-    y_context = y_context[:, order, :]
-
-    order = torch.argsort(x_all, dim=1)[0, :, 0]
-    x_all = x_all[:, order, :]
-    y_all = y_all[:, order, :]
-    # print('[split into context, target]:', x_context.shape, y_context.shape, x_all.shape, y_all.shape)
-        
-    x_all = x_all[0].numpy()
-    y_all = y_all[0].numpy()
-    x_context = x_context[0].numpy()
-    y_context = y_context[0].numpy()
-    
+    # plot in 3d
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    ax.plot(x_all[:,0], x_all[:,1], y_all[:,0], 'b.', markersize=3, linewidth=1, label='target')
-    ax.plot(x_context[:,0], x_context[:,1], y_context[:,0], 'g.', markersize=5, linewidth=1, label='context')
-    ax.legend()
+    ax.scatter(x[:, 0], x[:, 1], y.squeeze(-1))
+    ax.set_xlabel('x1')
+    ax.set_ylabel('x2')
+    ax.set_zlabel('dist')
     plt.show()
+    
+    
     #==================================================================
+    # context_count = 50
+    # context_idx, target_idx = anp_utils.context_target_split(total_count, context_count)
+    # batch = 1
+    # x = x.expand(batch, -1, -1)
+    # y = y.expand(batch, -1, -1)
+    # x_context, y_context = x[:, context_idx, :], y[:,  context_idx, :]
+    # x_target, y_target = x[:, target_idx, :], y[:, target_idx, :]
+    # x_all = torch.cat([x_context, x_target], dim=1) # dim 1: num_samples
+    # y_all = torch.cat([y_context, y_target], dim=1) # dim 1: num_samples
+    
+    # # anp_utils.plot_functions(x_target, y_target, x_context, y_context, y_target, 0)
+    
+    # x_all = x_all[0].unsqueeze(0)
+    # y_all = y_all[0].unsqueeze(0)
+    # x_context = x_context[0].unsqueeze(0)
+    # y_context = y_context[0].unsqueeze(0)
+
+    # order = torch.argsort(x_context, dim=1)[0, :,0]
+    # x_context = x_context[:, order, :]
+    # y_context = y_context[:, order, :]
+
+    # order = torch.argsort(x_all, dim=1)[0, :, 0]
+    # x_all = x_all[:, order, :]
+    # y_all = y_all[:, order, :]
+    # # print('[split into context, target]:', x_context.shape, y_context.shape, x_all.shape, y_all.shape)
+        
+    # x_all = x_all[0].numpy()
+    # y_all = y_all[0].numpy()
+    # x_context = x_context[0].numpy()
+    # y_context = y_context[0].numpy()
+    
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111, projection='3d')
+    # ax.plot(x_all[:,0], x_all[:,1], y_all[:,0], 'b.', markersize=3, linewidth=1, label='target')
+    # ax.plot(x_context[:,0], x_context[:,1], y_context[:,0], 'g.', markersize=5, linewidth=1, label='context')
+    # ax.legend()
+    # plt.show()
+    # ==================================================================
     
     # print('='*10, 'MOM4 data','='*10, )
     # dataset = MOM4Data(input_dim=1, num_samples=5)

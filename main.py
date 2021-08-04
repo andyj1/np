@@ -3,24 +3,16 @@
 
 # https://machinelearningmastery.com/what-is-bayesian-optimization/
 import sys
+import time
 import warnings
 
-import numpy as np
 import torch
-from tqdm import tqdm
 
-import time
 import bo_utils
-import data
-import model
 import parse_utils
-import trainer
-from acquisition import Acquisition
-from surrogate import SurrogateModel
-import bo_utils
-
 from bayesopt import BayesianOptimization
-    
+from surrogate import SurrogateModel
+
 warnings.filterwarnings("ignore")
 
 ''' global variables '''
@@ -72,7 +64,7 @@ if __name__ == "__main__":
         kappa=acq_cfg['beta'],      # beta (smaller = more exploitative)
     )
     end = time.time()
-    print(f'maximizing took: {(end-start):.3f} sec')
+    print(f'maximizing took: {(end-start):.4f} sec')
     
     # print all probed points (non-overlapping)
     # for i, res in enumerate(optimizer.res):
@@ -86,5 +78,5 @@ if __name__ == "__main__":
     
     candidate = (optimizer.max['params']['x1'], optimizer.max['params']['x2'])
     target = optimizer.max['target']
-    print('RESULT:', candidate, target)
+    print('Result (optimized):', candidate, target)
     

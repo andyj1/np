@@ -143,7 +143,6 @@ class AttentiveNP(nn.Module):
         
         if return_std:
             return mu, sigma
-        
         return mu
 
 class FeedforwardMLP(nn.Module):

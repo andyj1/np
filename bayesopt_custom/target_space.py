@@ -48,13 +48,17 @@ class TargetSpace(object):
         
         self.cfg = cfg
         self._plot_iteration = 0
+        self.fig = plt.figure()
+        self.ax = self.fig.add_subplot(111)
         
         num_samples = self.cfg['train_cfg']['num_samples']
         num_workers = self.cfg['train_cfg']['num_workers']
         data_cfg = self.cfg['data_cfg']
         
         # start = time.time()
-        self.dataset = custom.CustomData(input_dim=2, num_samples=num_samples, type='toy', cfg=data_cfg)
+        type = 'mom4'
+        self.dataset = custom.CustomData(input_dim=2, num_samples=num_samples, type=type, cfg=data_cfg)
+        
         self.index = 0
         # self.dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=1, shuffle=True, num_workers=num_workers)
         # end = time.time()
@@ -196,6 +200,10 @@ class TargetSpace(object):
         
         
     def visualize_objective_space(self, xs):
+        '''
+        Draws objective space over specified bounds in x and y
+        '''
+        
         # plot cached (registered points)
         # xs: list of [value1, value2] (self._queue._queue from bayesopt.py) 
         # print('plotting cached sample...')
@@ -218,9 +226,9 @@ class TargetSpace(object):
         inputs = np.zeros((len(xs), len(xs[0])))
         for i, x in enumerate(xs):
             inputs[i] = x
-        ax = plt.gca()
-        ax = plot_grid(ax, inputs[:, 0], inputs[:, 1], self._bounds, inputs.shape[1], self.cfg['train_cfg']['model_type']) #, self._plot_iteration)
-        ax.grid(False)
+        # ax = plt.gca()
+        self.ax = plot_grid(self.ax, inputs[:, 0], inputs[:, 1], self._bounds, inputs.shape[1], self.cfg['train_cfg']['model_type']) #, self._plot_iteration)
+        self.ax.grid(False)
         
 
     def probe(self, params):
@@ -245,6 +253,7 @@ class TargetSpace(object):
         sample_type = 'initial'
         if isinstance(params, dict):
             sample_type = 'candidate'
+            # print('SUGGESTED:', params)
         
         x = self._as_array(params)
         # params (x) not yet registered in target space (self._cache)
@@ -257,29 +266,30 @@ class TargetSpace(object):
             self.register(x, target)
             # print('registered target in search space:', x, target)
             
-            # plot a newly sampled candidate
-            if sample_type == 'candidate':
-                # ax = plt.gca(projection='3d')
-                # ax.plot(params['x1'], params['x2'], -target[0][0].numpy(), 'r.', markersize=5, label=f'{-target[0][0].numpy():.3f}')
-                
-                ax = plt.gca()
-                ax.scatter(params['x1'], params['x2'], s=30, marker='x', c='k', label='')
-                
-                ax.set_xlabel('x1')
-                ax.set_ylabel('x2')
-                # ax.set_zlabel('y')
-                # ax.set_xlim([-10,10])
-                # ax.set_ylim([-10,10])
-                # ax.set_zlim([0,30])
-                # ax.legend(loc='best')
-                # ax.view_init(elev=15, azim=-45)
-                ax.grid(False)
-                ax.set_title(ax.get_title().split('(iter')[0] + f" (iter: {self._plot_iteration+1})")    
-                # plt.pause(0.00001)
+        # plot a newly sampled candidate
+        if sample_type == 'candidate':
+            # ax = plt.gca(projection='3d')
+            # ax.plot(params['x1'], params['x2'], -target[0][0].numpy(), 'r.', markersize=5, label=f'{-target[0][0].numpy():.3f}')
             
-                plt.savefig(f"fig/{self.cfg['train_cfg']['x_dim']}dim_{self.cfg['train_cfg']['model_type']}_{self.cfg['train_cfg']['num_samples']}init_{self._plot_iteration+1}iter.png")
-                
-                self._plot_iteration += 1
+            # ax = plt.gca()
+            self.ax.scatter(params['x1'], params['x2'], s=30, marker='x', c='k', label='')
+            
+            self.ax.set_xlabel('x1')
+            self.ax.set_ylabel('x2')
+            # ax.set_zlabel('y')
+            # ax.set_xlim([-10,10])
+            # ax.set_ylim([-10,10])
+            # ax.set_zlim([0,30])
+            # ax.legend(loc='best')
+            # ax.view_init(elev=15, azim=-45)
+            plt.grid(False)
+            self.ax.set_title(self.ax.get_title().split('(')[0].strip() + f" ({self._plot_iteration+1})")    
+            # plt.pause(0.00001)
+        
+            self.fig.savefig(f"fig/{self.cfg['train_cfg']['x_dim']}dim_{self.cfg['train_cfg']['model_type']}_{self.cfg['train_cfg']['num_samples']}init_{self._plot_iteration+1}iter.png")
+            
+            self._plot_iteration += 1
+            
         return target
 
     def random_sample(self):
@@ -349,6 +359,19 @@ class TargetSpace(object):
                 'target': self.target.max(),
                 'params': dict(
                     zip(self.keys, self.params[self.target.argmax()])
+                )
+            }
+        except ValueError:
+            res = {}
+        return res
+
+    def min(self):
+        """Get maximum target value found and corresponding parameters."""
+        try:
+            res = {
+                'target': self.target.min(),
+                'params': dict(
+                    zip(self.keys, self.params[self.target.argmin()])
                 )
             }
         except ValueError:

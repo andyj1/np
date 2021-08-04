@@ -13,7 +13,7 @@ fp_out = f'{save_folder}/gif.gif'
 
 
 # https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#gif
-img, *imgs = [Image.open(f) for f in sorted(glob.glob(fp_in))]
+img, *imgs = [Image.open(f) for f in sorted(glob.glob(fp_in), key=os.path.getmtime)]
 img.save(fp=fp_out, format='GIF', append_images=imgs,
-         save_all=True, duration=500, loop=0, dpi=(300,300)) # duration in ms between each frame
+         save_all=True, duration=1000, loop=0, dpi=(300,300)) # duration in ms between each frame
 print(f'GIF created at: {save_folder}')

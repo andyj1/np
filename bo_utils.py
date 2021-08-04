@@ -2,7 +2,6 @@ import configparser
 import gc
 import warnings
 
-import numpy as np
 import torch
 
 from toy import self_alignment
@@ -26,6 +25,12 @@ def setup():
     torch.backends.cudnn.benchmark = True
 
 def black_box_function(x1, x2): 
+    '''objective function
+    Note:
+        match this function with f(x,y) in *visualize_objective_space.py*
+    
+    '''
+    
     # add self-alignment to shift PRE to POST
     shifted_xs, method = self_alignment.self_alignment(x1, x2)
     x1, x2 = torch.chunk(shifted_xs, chunks=2, dim=-1)
@@ -43,6 +48,7 @@ def black_box_function(x1, x2):
     # so negate this to minimize
     
     # distance: objective over sample space
+    # return negative since BO framework maximizes the objective
     return -norm_distance
 
 if __name__ == '__main__':

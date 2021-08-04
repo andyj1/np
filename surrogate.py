@@ -36,10 +36,9 @@ class SurrogateModel(object):
         self.lr = self.cfg['lr']
         
         self.initial_training = True
-        
-        self.fig = plt.figure()
-        
+                
         self._random_state = util.ensure_rng(self.random_state)
+        
         # initialize model
         if 'gp' not in self.model_type:
             # neural processes family model
@@ -67,13 +66,16 @@ class SurrogateModel(object):
         x = df.iloc[:, :-1].values
         y = df.iloc[:, -1:].values
         dataset = data.TemplateDataset(x, y)
-        train_loader = torch.utils.data.DataLoader(dataset, batch_size=len(dataset), shuffle=True, num_workers=self.cfg['num_workers'])
+        train_loader = torch.utils.data.DataLoader(dataset, batch_size=len(dataset), shuffle=True, num_workers=self.cfg['num_workers'], pin_memory=True)
         test_loader = None
         return train_loader, test_loader
     
     def train(self, train_loader, test_loader=None):
+        # turn the autotuner on
+        torch.backends.cudnn.benchmark = True
+
         if self.cfg['visualize']:
-            save_img_path = f'./fig/{self.cfg["dataset"]}/{self.model_type}'
+            save_img_path = f'./fig/train_{self.cfg["dataset"]}/{self.model_type}'
             os.makedirs(save_img_path, exist_ok=True, mode=0o755)
         
         if self.initial_training:
@@ -86,6 +88,7 @@ class SurrogateModel(object):
         self.model.train()
         self.test_interval = max(1, (n_epoch+1-init_epoch) // 5)
         
+        self.fig = plt.figure()
         t = tqdm(range(init_epoch, n_epoch+1, 1), total=(n_epoch+1-init_epoch))
         for epoch in t:
             for batch_idx, (x, y) in enumerate(train_loader):
@@ -126,6 +129,7 @@ class SurrogateModel(object):
                 if epoch == init_epoch or epoch % self.test_interval == 0:
                     plt.ion()
                     plt.clf()
+                    
                     if input_dim == 1:
                         anp_utils.plot_functions(x_all.cpu().detach(),
                                                 -y_all.cpu().detach(),
@@ -135,7 +139,7 @@ class SurrogateModel(object):
                                                 sigma.cpu().detach())
                     elif input_dim == 2:
                         ax = self.fig.add_subplot(111, projection='3d')
-                        ax = anp_utils.plot_functions_2d(x_all.cpu().detach(),
+                        anp_utils.plot_functions_2d(x_all.cpu().detach(),
                                                         -y_all.cpu().detach(),
                                                         x_context.cpu().detach(),
                                                         -y_context.cpu().detach(),
@@ -143,12 +147,15 @@ class SurrogateModel(object):
                                                         sigma.cpu().detach(),
                                                         ax)
                     ax.view_init(elev=15, azim=-45)
-                    plt.draw()
-                    title_str = f'{self.model_type.upper()}, epoch ' + str(epoch)
-                    plt.title(title_str)
+                    # plt.draw()
+                    title_str = f'{self.model_type.upper()} (epoch {epoch})'
+                    ax.set_title(title_str)
 
                     if epoch % self.test_interval == 0:
-                        plt.savefig(f'./fig/{self.cfg["dataset"]}/{self.model_type}/anp_{n_epoch}.png', transparent=False, edgecolor='none')
+                        self.fig.savefig(f'{save_img_path}/{self.model_type}_{epoch}_{n_epoch}.png', transparent=False, edgecolor='none')
                     plt.pause(0.0000001)
+                
         self.n_epoch = n_epoch
+        plt.show(block=False)
+        plt.close()
     

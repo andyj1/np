@@ -121,8 +121,6 @@ class UtilityFunction(object):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             mean, std = model.predict(x, return_std=True)
-            # print(x, mean, std)
-            # print(mean)
 
         return mean + kappa * std
 

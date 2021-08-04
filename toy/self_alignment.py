@@ -5,8 +5,17 @@ import numpy as np
 # self alignment-specific tension levels by chip
 tension_level = {'R0402': (1000*500)/(400*200), 'R0603': (1000*500)/(600*300), 'R1005': (1000*500)/(1000*500)}
 
+import joblib
+import os
+
+model_dir = 'reflow_oven'
+file_path = 'regressor_R1005_50_trees_100_deep_random_forest.pkl'
+model_path = os.path.join(model_dir, file_path)
+regressor = joblib.load(model_path)
+
 def self_alignment(x1, x2=None):
     method = 'constantshift' #toycfg['method'] # shift / shiftPolar / tensionSimple / tension
+    method = 'MOM4MODEL'
     
     shifted_outputs = []
     if x2 is not None:
@@ -54,4 +63,20 @@ def constantshift(inputs):
     # else:
     #    outputs = post_chip
     outputs = post_chip
+    return outputs
+
+def MOM4MODEL(inputs):
+    '''
+    MOM4MODEL:
+        regression (dx, dy) according to random forest regressor
+    return
+        [regressed (x,y)]
+    outputs = None
+    '''
+    global regressor
+    outputs = regressor.predict(inputs)
+    
+    if isinstance(outputs, np.ndarray):
+        outputs = torch.from_numpy(outputs)
+    
     return outputs

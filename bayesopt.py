@@ -83,6 +83,9 @@ class BayesianOptimization(Observable):
         # queue
         self._queue = Queue()
         
+        self.num_candidates_sampled = 0
+        self.num_candidates_to_sample = self.cfg['train_cfg']['num_candidates_per_train']
+        
         super(BayesianOptimization, self).__init__(events=DEFAULT_EVENTS)
         
     @property
@@ -107,6 +110,7 @@ class BayesianOptimization(Observable):
         """Probe target of x"""
         if lazy:
             self._queue.add(params)
+            print('adding:', params)
         else:
             target = self._space.probe(params) # registers suggested point
             self.dispatch(Events.OPTIMIZATION_STEP)
@@ -124,19 +128,23 @@ class BayesianOptimization(Observable):
         # print('regressor to be fit with:\n\ttarget space params', self._space.params, '\n\ttarget space targets', self._space.target)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            print('training model...', end='')
-            start = time.time()
-            if self._using_gp:
-                self.surrogate.model.fit(self._space.params, self._space.target)
-            else:
-                train_loader, test_loader = self.surrogate.preprocess(self._space.params, self._space.target)
-                self.surrogate.train(train_loader, test_loader)
-                
-                # clear from memory
-                del train_loader
-                del test_loader
-            end = time.time()
-            print(f'took {(end-start):.4f} sec')
+            
+            if (self.num_candidates_sampled % self.num_candidates_to_sample == 0):
+                # print('training model...', end='')
+                start = time.time()
+                if self._using_gp:
+                    self.surrogate.model.fit(self._space.params, self._space.target)
+                else:
+                    train_loader, test_loader = self.surrogate.preprocess(self._space.params, self._space.target)
+                    self.surrogate.train(train_loader, test_loader)
+                    
+                    # clear from memory
+                    del train_loader
+                    del test_loader
+                end = time.time()
+                print(f'training model took {(end-start):.4f} sec')
+            
+        # print('candidates:', self.num_candidates_sampled)
 
         # Finding argmax of the acquisition function.
         suggestion = acq_max(
@@ -146,6 +154,8 @@ class BayesianOptimization(Observable):
             bounds=self._space.bounds,
             random_state=self._random_state
         )
+        
+        self.num_candidates_sampled += 1
 
         return self._space.array_to_params(suggestion)
 
@@ -161,16 +171,16 @@ class BayesianOptimization(Observable):
         start = time.time()
         points = self._space.sample_multiple(init_points)
         end = time.time()
-        # print('DATA SAMPLING: {:.3f}'.format(end-start))
+        print('DATA SAMPLING: {:.3f}'.format(end-start))
 
         start = time.time()
         for _, point in enumerate(points):
             self._queue.add(point)
         end= time.time()
-        # print('ADDING TO QUEUE: {:.3f}'.format(end-start))
+        print('ADDING TO QUEUE: {:.3f}'.format(end-start))
         
         # print('DATA POINTS: TOTAL', len(points))
-        # print('QUEUE: TOTAL', len(self._queue))
+        print('QUEUE: TOTAL', len(self._queue))
         # print('CURRENT PARAMS, TARGETS: TOTAL', len(self._space.params))
         
     def _prime_subscriptions(self):
@@ -211,10 +221,12 @@ class BayesianOptimization(Observable):
         while not self._queue.empty or iteration < n_iter:
             try:
                 x_probe = next(self._queue)
+                print('probing in queue:', x_probe)
             except StopIteration:
                 util.update_params()
                 x_probe = self.suggest(util)
                 iteration += 1
+                print('new point suggested:', x_probe)
             
             # print('QUEUE: TOTAL', len(self._queue))
             # print('CURRENT PARAMS, TARGETS: TOTAL', len(self._space.params))

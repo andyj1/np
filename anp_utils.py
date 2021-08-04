@@ -75,13 +75,6 @@ def plot_functions_2d(target_x, target_y, context_x, context_y, pred_y, std, ax)
     context_x = context_x[0].unsqueeze(0)
     context_y = context_y[0].unsqueeze(0)
 
-    # print(target_x.shape, 
-    #       target_y.shape,
-    #       context_x.shape, 
-    #       context_y.shape, 
-    #       pred_y.shape, 
-    #       std.shape)
-    
     order = torch.argsort(target_x, dim=1)[0,:,0]
     target_x = target_x[:, order, :]
     target_y = target_y[:, order, :]
@@ -98,14 +91,10 @@ def plot_functions_2d(target_x, target_y, context_x, context_y, pred_y, std, ax)
     #       context_y.shape, 
     #       pred_y.shape, 
     #       std.shape)
-        
-    # plt.plot(target_x[0], target_y[0], 'k--', linewidth=2, label='target')
-    # plt.plot(target_x[0], pred_y[0], 'b.', linewidth=1, label='predicted')
-    # plt.plot(context_x[0], context_y[0], 'g.', markersize=5, label='context')
     
     ax.plot(target_x[0, :, 0], target_x[0, :, 1], pred_y[0, :, 0], 'b.', markersize=2, label='predicted')
     ax.plot(target_x[0, :, 0], target_x[0, :, 1], target_y[0, :, 0], 'k.', markersize=2, label='target')
-    ax.plot(context_x[0, :, 0], context_x[0, :, 1], context_y[0, :, 0], 'g.', markersize=5, label='context')
+    # ax.plot(context_x[0, :, 0], context_x[0, :, 1], context_y[0, :, 0], 'g.', markersize=5, label='context')
     
     # ax.scatter(target_x[0, :, 0], target_x[0, :, 1], pred_y[0, :, 0], s=2, c='b', label='predicted')
     # ax.scatter(target_x[0, :, 0], target_x[0, :, 1], target_y[0, :, 0], s=2, c='k', label='target')
@@ -114,7 +103,6 @@ def plot_functions_2d(target_x, target_y, context_x, context_y, pred_y, std, ax)
     ax.set_xlabel('x1')
     ax.set_ylabel('x2')
     ax.set_zlabel('y')
-    # Make the plot pretty
     # plt.yticks([-6, 0, 6], fontsize=16)
     # plt.xticks([-6, 0, 6], fontsize=16)
     # plt.ylim([-6, 6])
