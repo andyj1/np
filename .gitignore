@@ -1,9 +1,7 @@
 # omit files
 todo.md
 fig/*
-fig_botorch/*
 datasets/*
-bo_example_gmlee/*
 reflow_oven/*
 
 
