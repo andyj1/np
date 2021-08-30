@@ -26,8 +26,6 @@ CEND = '\033[0m'
 if __name__ == "__main__":
     bo_utils.setup()
     
-    # prepare figure directory
-            
     # configurations
     cfg, args = parse_utils.parse()
     train_cfg, data_cfg, acq_cfg = cfg['train_cfg'], cfg['data_cfg'], cfg['acq_cfg']
@@ -39,7 +37,7 @@ if __name__ == "__main__":
     print('using device:', str(device))
     
     ''' initialize and train model '''
-    surrogate = SurrogateModel(cfg=train_cfg, device=device)
+    surrogate = SurrogateModel(train_cfg, device=device)
     
     ''' BO training loop '''
     # ---------------------------------------
@@ -60,7 +58,8 @@ if __name__ == "__main__":
     optimizer.maximize(
         init_points=train_cfg['num_samples'], # number of initial points
         n_iter=acq_cfg['num_candidates'],      # num candidates
-        acq='ucb',
+        # acq='ucb', # 'cub', 'ei', 'poi'
+        acq='ei',
         kappa=acq_cfg['beta'],      # beta (smaller = more exploitative)
     )
     end = time.time()

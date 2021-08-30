@@ -118,6 +118,7 @@ class UtilityFunction(object):
 
     @staticmethod
     def _ucb(x, model, kappa):
+        """ Upper Confidence Bound """
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             mean, std = model.predict(x, return_std=True)
@@ -126,6 +127,7 @@ class UtilityFunction(object):
 
     @staticmethod
     def _ei(x, model, y_max, xi):
+        """ Expected Improvement """
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             mean, std = model.predict(x, return_std=True)
@@ -134,8 +136,23 @@ class UtilityFunction(object):
         z = a / std
         return a * norm.cdf(z) + std * norm.pdf(z)
 
+    @staticmethod
+    def _poi(x, model, y_max, xi):
+        """ Probability of Improvement """
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            mean, std = model.predict(x, return_std=True)
 
-        print(mu.shape)
+        z = (mean - y_max - xi)/std
+        return norm.cdf(z)
+    
+    @staticmethod
+    def _es(x, model): 
+        """Entropy Search""" 
+        with warnings.catch_warnings(): 
+            warnings.simplefilter("ignore")
+            _, std = model.predict(x, return_std=True) 
+        return std
 
 
 def load_logs(optimizer, logs):

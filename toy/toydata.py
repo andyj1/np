@@ -6,7 +6,6 @@ import os
 
 class ToyData(object):
     def __init__(self):
-        super().__init__()
         
         config = yaml.load(open(os.path.join(os.getcwd(), 'toy/toyconfig.yml'), 'r'), yaml.FullLoader)['toy']
         self.num_samples = config['num_samples']
@@ -43,20 +42,23 @@ class ToyData(object):
         w = torch.normal(mean=self.mu_spi2, std=self.sigma_spi2, size=(self.num_samples, 1))
         return torch.cat([l, w], dim=1)
     
+    def SPIVolumes(self):
+        # generate SPI volume percentages in range [min, max]
+        min_spi_vol_percentage = 0.70
+        max_spi_vol_percentage = 1.00
+        spi_vols = torch.rand(self.num_samples, 2) * (max_spi_vol_percentage - min_spi_vol_percentage) + min_spi_vol_percentage
+        return spi_vols
+    
+    # ============================================================================
     def SPIcenter(self):
         l = torch.normal(mean=self.mu_spi_center1, std=self.sigma_spi_center1, size=(self.num_samples, 1))
         w = torch.normal(mean=self.mu_spi_center2, std=self.sigma_spi_center2, size=(self.num_samples, 1))
         return torch.cat([l, w], dim=1)
 
-    def SPIVolumes(self):
-        min_spi_vol_percentage = 0.70
-        max_spi_vol_percentage = 1.00
-        spi_vols = torch.rand(self.num_samples, 2) * (max_spi_vol_percentage - min_spi_vol_percentage) + min_spi_vol_percentage
-        return spi_vols
-
 if __name__=='__main__':
     import yaml
     toy = ToyData()
-    inputs = torch.cat([toy.preLW(), toy.preAngle(), toy.SPILW(), toy.SPIcenter(), toy.SPIVolumes()], dim=1)
+    inputs = torch.cat([toy.preLW(), toy.preAngle(), toy.SPILW(), toy.SPIVolumes()], dim=1)
+    print('='*10, 'toy data','='*10, )
     print(inputs.shape)
 

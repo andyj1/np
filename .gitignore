@@ -1,10 +1,11 @@
 # omit files
-todo.md
-fig/*
 datasets/*
 reflow_oven/*
 TODO/*
 misc/*
+fig/*
+results/*
+
 
 
 # Byte-compiled / optimized / DLL files

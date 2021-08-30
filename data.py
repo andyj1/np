@@ -8,7 +8,8 @@ import torch
 from torchvision import transforms as transforms
 
 import anp_utils
-from toy import self_alignment, toydata
+import reflow_soldering
+from toy import toydata
 
 
 # only consider 1-D in this case
@@ -24,12 +25,14 @@ class CustomData(torch.utils.data.Dataset):
         self.num_samples = num_samples
         self.type = type
         self.cfg = cfg
+        self.chip = 'R1005'
         
         self.df = self.fetch_dataframe(type)
         self.x = self.df.iloc[:, :self.num_dim].values
         self.y = self.df.iloc[:, self.num_dim:].values
         
         # print(self.x.shape, self.y.shape)
+        
     def __len__(self):
         return self.num_samples # len(self.y)
     
@@ -41,36 +44,39 @@ class CustomData(torch.utils.data.Dataset):
         
         if type == 'toy':
             toy = toydata.ToyData()
-            x = torch.cat([toy.preLW(), toy.preAngle(), toy.SPIcenter(), toy.SPILW(), toy.SPIVolumes()], dim=1) # multi-dim input
+            # x = torch.cat([toy.preLW(), toy.preAngle(), toy.SPILW(), toy.SPIVolumes()], dim=1) # multi-dim input
+            x = torch.cat([toy.preLW()], dim=1) # multi-dim input
             x = x[:, :self.num_dim]
             self.num_dim = x.shape[1]
             
-            # apply self alignment only on the first two: L, W
             if self.num_dim > 2:
-                x_shifted, method = self_alignment.self_alignment(x[:, :2])
+                x_shifted, method = reflow_soldering.self_alignment(x[:, :2])
                 x = torch.cat((x_shifted, x[:, 2:]), dim=-1)
             elif self.num_dim == 2:
-                x, method = self_alignment.self_alignment(x)
+                x, method = reflow_soldering.self_alignment(x)
+            
             x = pd.DataFrame(x, columns=[i+1 for i in range(self.num_dim)]).astype(np.float32)
             y = x.iloc[:, :2].apply(np.linalg.norm, axis=1).astype(np.float32)  # objective: L-2 norm
         
         elif type == 'mom4':            
-            from datasets.reflow_soldering.create_self_alignment_model import customMOM4chipsample
             
             df = pd.read_csv('./datasets/spi_clustered.csv').drop(['Unnamed: 0'], axis=1)
             df.reset_index(drop=True, inplace=True)
             assert df.isnull().sum().sum() == 0, 'there is a NULL value in the loaded data'
             
-            chip = 'R1005'
             input_vars = ['PRE_L','PRE_W']
             output_vars = ['POST_L','POST_W']
             vars = input_vars+output_vars
             
-            xy = customMOM4chipsample(df, input_vars=vars, num_samples=self.num_samples, chiptype=chip, random_state=42).rename(columns={'PRE_L': 0, 'PRE_W': 1, 'POST_L': 2, 'POST_W': 3})
+            xy = customMOM4chipsample(df, 
+                                      input_vars=vars, 
+                                      num_samples=self.num_samples, 
+                                      chiptype=self.chip,
+                                      random_state=42
+                                     ).rename(columns={'PRE_L': 0, 'PRE_W': 1, 'POST_L': 2, 'POST_W': 3})
                         
             x = xy.iloc[:, :self.num_dim]
             y = xy.iloc[:, self.num_dim:].apply(np.linalg.norm, axis=1).astype(np.float32)  # objective: L-2 norm
-            
             
         elif type == 'parabola':
             # self.num_dim = 1 or 2
@@ -114,19 +120,37 @@ class CustomData(torch.utils.data.Dataset):
         # print('data shape:', df.shape)
         return df
 
+def customMOM4chipsample(df: pd.DataFrame, input_vars: list, num_samples: int, chiptype: str = None, random_state: int = 42):
+    # select the dataframe for the chip type in conifg
+    chip_df = None
+    if chiptype == None:
+        chip_df = df
+    else:
+        for name, group in df.groupby(['PartType', 'Orient.', 'spi_l_percentage','spi_w_percentage']):
+            if name == (chiptype, 0, 20, 20):
+                chip_df = group
+                print('MOM4 sorted by:', name)
+            else:
+                continue
+    # if none, there is no value for that chip
+    assert chip_df is not None, '[Error] check chip type' 
+    
+    sampled_chips = chip_df.sample(n=num_samples, random_state=random_state)[input_vars]
+    return sampled_chips
 
-# template custom dataset class
 class TemplateDataset(torch.utils.data.Dataset):
     '''
-    used in surrogate.py when preprocessing into dataloaders to re-train
+    refer to [surrogate.py] -> [preprocess()]
+    
     '''
     def __init__(self, x, y):
         super(TemplateDataset, self).__init__()
         """
         Arguments:
-            :x :: [N x input_dim] list of params values
-            :y :: [N x 1] list of target values 
+            x: [N x input_dim] ndarray of params values
+            y: [N x 1] ndarray of target values 
         """
+        # convert numpy array to torch tensor
         if isinstance(x, np.ndarray):
             x = torch.from_numpy(x)
             y = torch.from_numpy(y)
@@ -209,7 +233,12 @@ if __name__ == '__main__':
     # plot in 3d
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    ax.scatter(x[:, 0], x[:, 1], y.squeeze(-1))
+    if datatype == 'mom4': 
+        ax.set_title(dataset.chip) 
+    else:
+        pass
+    # ax.scatter(x[:100, 0], x[:100, 1], y[:100].squeeze(-1))
+    ax.scatter(x[:, 0], x[:, 1], y[:].squeeze(-1))
     ax.set_xlabel('x1')
     ax.set_ylabel('x2')
     ax.set_zlabel('dist')

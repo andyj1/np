@@ -3,7 +3,7 @@ import configparser
 import matplotlib.pyplot as plt
 import torch
 
-from toy import self_alignment
+import reflow_soldering
 
 cfg = configparser.ConfigParser()
 cfg.read('config.ini')
@@ -15,6 +15,13 @@ mounter_noise_min, mounter_noise_max = int(stripped[0]), int(stripped[3:])
 scaler = lambda x, a, b: b + (a - b) * x
 
 def f(x, y):
+    """ 
+    params
+        (x, y): vector inputs
+    
+    return
+        z: meshgrid containing objective values (from self_alignment function)
+    """
     # x, y: vector (each of which is sample size)
     x_grid_pre, y_grid_pre = torch.meshgrid(x, y)
     
@@ -23,7 +30,7 @@ def f(x, y):
         x = x.unsqueeze(-1)
         y = y.unsqueeze(-1)
     xy = torch.cat((x, y), 1)
-    xy_shifted, method = self_alignment.self_alignment(xy)
+    xy_shifted, method = reflow_soldering.self_alignment(xy)
     x_shifted, y_shifted = torch.chunk(xy_shifted, chunks=2, dim=1)
     x_shifted = x_shifted.squeeze()
     y_shifted = y_shifted.squeeze()
@@ -86,7 +93,7 @@ def plot_grid(ax, x, y, pbounds, num_dim, model_type, iteration=None):
 
 
 if __name__ == '__main__':
-    from datasets.reflow_soldering.create_self_alignment_model import customMOM4chipsample
+    from data import customMOM4chipsample
     import pandas as pd
     import numpy as np
     

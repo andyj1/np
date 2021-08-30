@@ -4,7 +4,7 @@ import warnings
 
 import torch
 
-from toy import self_alignment
+import reflow_soldering
 
 cfg = configparser.ConfigParser()
 cfg.read('config.ini')
@@ -32,7 +32,7 @@ def black_box_function(x1, x2):
     '''
     
     # add self-alignment to shift PRE to POST
-    shifted_xs, method = self_alignment.self_alignment(x1, x2)
+    shifted_xs, method = reflow_soldering.self_alignment(x1, x2)
     x1, x2 = torch.chunk(shifted_xs, chunks=2, dim=-1)
     
     # add mounter noise

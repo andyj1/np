@@ -15,58 +15,65 @@ from sklearn import gaussian_process as gp
 from tqdm import tqdm
 
 import anp_utils
+import data
 import model
 from bayesopt_custom import util
-import data
 
 
 class SurrogateModel(object):
-    def __init__(self, cfg, device):
+    def __init__(self, train_cfg, device):        
         super(SurrogateModel, self).__init__()
+        
         self.device = device
-        self.cfg = cfg # train config
-        self.model_type = cfg['model_type']
-        self.random_state = cfg['random_state']
+        self.train_cfg = train_cfg
+        self.model_type = train_cfg['model_type']
+        self.random_state = train_cfg['random_state']
 
-        self.context_size = self.cfg['context_size']
-        self.num_samples = self.cfg['num_samples']
-        self.n_epoch = self.cfg['n_epoch']
-        self.n_epoch_subsequent = self.cfg['n_epoch_subsequent']
+        self.context_size = self.train_cfg['context_size']
+        self.num_samples = self.train_cfg['num_samples']
+        self.n_epoch = self.train_cfg['n_epoch']
+        self.n_epoch_subsequent = self.train_cfg['n_epoch_subsequent']
         self.test_interval = 1 # set differently by n_epoch in training
-        self.lr = self.cfg['lr']
+        self.lr = self.train_cfg['lr']
         
         self.initial_training = True
-                
         self._random_state = util.ensure_rng(self.random_state)
         
-        # initialize model
-        if 'gp' not in self.model_type:
-            # neural processes family model
-            if self.model_type == 'anp':
-                self.model = model.AttentiveNP(self.cfg).to(self.device)
-            elif self.model_type == 'mlp':
-                self.model = model.FeedforwardMLP(self.cfg).to(self.device)
-            # need optimizer for neural processes
-            self.optimizer_cls = optim.Adam
-            self.optimizer = self.optimizer_cls(self.model.parameters(), lr=self.lr)
-            
-        elif self.model_type == 'gp':
+        # model initialization
+        if 'gp' in self.model_type:
             # scikit learn GPR
             self.model = gp.GaussianProcessRegressor(kernel=gp.kernels.Matern(nu=2.5), 
                                                   alpha=1e-6, 
                                                   normalize_y=True, 
                                                   n_restarts_optimizer=5, 
                                                   random_state=self._random_state)
-    # preprocess list of values into dataloaders 
-    # to be used in BO::suggest()
+        else:
+            if self.model_type == 'anp':
+                self.model = model.AttentiveNP(self.train_cfg).to(self.device)
+            elif self.model_type == 'mlp':
+                self.model = model.FeedforwardMLP(self.train_cfg).to(self.device)
+                
+            self.optimizer_cls = optim.Adam
+            self.optimizer = self.optimizer_cls(self.model.parameters(), lr=self.lr)
+            
+    # preprocess ndarray of cumulative samples into dataloaders
     def preprocess(self, xlist, ylist):
-        x = pd.DataFrame(xlist, columns=['x1', 'x2']).astype(np.float32)
-        y = pd.DataFrame(ylist, columns=['y']).astype(np.float32)
-        df =  pd.concat((x, y), axis=1)
+        '''
+            xlist: ndarray of target_space._params
+            ylist: ndarray of target_space._targets
+        '''
+        # make target space params(x) and target (y) as float32 lists
+        # need float type, not double (for MLP especially)
+        df =  pd.concat((pd.DataFrame(xlist, columns=['x1', 'x2']).astype(np.float32), \
+                         pd.DataFrame(ylist, columns=['y']).astype(np.float32)), \
+                        axis=1)
         x = df.iloc[:, :-1].values
         y = df.iloc[:, -1:].values
         dataset = data.TemplateDataset(x, y)
-        train_loader = torch.utils.data.DataLoader(dataset, batch_size=len(dataset), shuffle=True, num_workers=self.cfg['num_workers'], pin_memory=True)
+        train_loader = torch.utils.data.DataLoader(dataset, batch_size=len(dataset), 
+                                                   num_workers=self.train_cfg['num_workers'], 
+                                                   shuffle=True, 
+                                                   pin_memory=True)
         test_loader = None
         return train_loader, test_loader
     
@@ -74,10 +81,11 @@ class SurrogateModel(object):
         # turn the autotuner on
         torch.backends.cudnn.benchmark = True
 
-        if self.cfg['visualize']:
-            save_img_path = f'./fig/train_{self.cfg["dataset"]}/{self.model_type}'
+        if self.train_cfg['visualize']:
+            save_img_path = f'./fig/train_{self.train_cfg["dataset"]}/{self.model_type}'
             os.makedirs(save_img_path, exist_ok=True, mode=0o755)
         
+        # set current init_epoch and n_epoch
         if self.initial_training:
             self.initial_training = False
             init_epoch = 1
@@ -85,10 +93,11 @@ class SurrogateModel(object):
         else:
             init_epoch = self.n_epoch + 1
             n_epoch = self.n_epoch + self.n_epoch_subsequent
+        
+        # train loop
+        self.fig = plt.figure()
         self.model.train()
         self.test_interval = max(1, (n_epoch+1-init_epoch) // 5)
-        
-        self.fig = plt.figure()
         t = tqdm(range(init_epoch, n_epoch+1, 1), total=(n_epoch+1-init_epoch))
         for epoch in t:
             for batch_idx, (x, y) in enumerate(train_loader):
@@ -118,13 +127,13 @@ class SurrogateModel(object):
                 loss.backward()
                 self.optimizer.step()
             
-            if self.cfg['verbose']:
+            if self.train_cfg['verbose']:
                 if self.model_type == 'anp':
                     print('Epoch: {:<5} | loss: {:.6f}\tKLD: {:.6f}\tmu: {:.4f},sigma: {:.4f}'.format(epoch, loss.item() / repeat_bs, kl.mean(), mu.mean(), sigma.mean()))
                 else:
                     print('Epoch:{:<5}\tloss: {:.6f}'.format(epoch, loss.item() / repeat_bs))
                     
-            if self.cfg['visualize']:                
+            if self.train_cfg['visualize']:                
                 # visusalize negative because we deal with minimizing problem (and the framework is set to maximize the target)                
                 if epoch == init_epoch or epoch % self.test_interval == 0:
                     plt.ion()
@@ -152,10 +161,12 @@ class SurrogateModel(object):
                     ax.set_title(title_str)
 
                     if epoch % self.test_interval == 0:
-                        self.fig.savefig(f'{save_img_path}/{self.model_type}_{epoch}_{n_epoch}.png', transparent=False, edgecolor='none')
+                        self.fig.savefig(f'{save_img_path}/3dspace_{self.model_type}_{epoch}epoch.png', transparent=False, edgecolor='none')
                     plt.pause(0.0000001)
                 
+        # update n_epoch after each training
         self.n_epoch = n_epoch
         plt.show(block=False)
         plt.close()
+        
     

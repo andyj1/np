@@ -1,5 +1,5 @@
+# generates toy AOI, SPI data
 toy:
-  method: constantshift # [constantshift, shift, shiftPolar, tensionSimple, tension]
   num_samples: 10000 # match config.ini num_samples
 
   # ======DATA======

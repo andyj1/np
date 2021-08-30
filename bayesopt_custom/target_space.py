@@ -1,19 +1,13 @@
-import sys
-import time
-
 import data as custom  # ../data
 import numpy as np
-import torch
 from matplotlib import pyplot as plt
 from visualize_objective_space import plot_grid
 
 from .util import ensure_rng
 
-
 def _hashable(x):
     """ ensure that an point is hashable by a python dict """
     return tuple(map(float, x))
-
 
 class TargetSpace(object):
     """
@@ -52,7 +46,6 @@ class TargetSpace(object):
         self.ax = self.fig.add_subplot(111)
         
         num_samples = self.cfg['train_cfg']['num_samples']
-        num_workers = self.cfg['train_cfg']['num_workers']
         data_cfg = self.cfg['data_cfg']
         
         # start = time.time()
@@ -83,8 +76,8 @@ class TargetSpace(object):
         # = samples we use to train in order to sample a new candidate
         self._cache = {}
         
-        # self._figure = plt.figure()
-
+        self._candidate_targets = np.empty(shape=(0))
+        
     def __contains__(self, x):
         return _hashable(x) in self._cache
 
@@ -203,7 +196,6 @@ class TargetSpace(object):
         '''
         Draws objective space over specified bounds in x and y
         '''
-        
         # plot cached (registered points)
         # xs: list of [value1, value2] (self._queue._queue from bayesopt.py) 
         # print('plotting cached sample...')
@@ -268,6 +260,9 @@ class TargetSpace(object):
             
         # plot a newly sampled candidate
         if sample_type == 'candidate':
+            # append candidate target
+            self._candidate_targets = np.concatenate([self._candidate_targets, [-target]])
+            
             # ax = plt.gca(projection='3d')
             # ax.plot(params['x1'], params['x2'], -target[0][0].numpy(), 'r.', markersize=5, label=f'{-target[0][0].numpy():.3f}')
             
@@ -286,7 +281,10 @@ class TargetSpace(object):
             self.ax.set_title(self.ax.get_title().split('(')[0].strip() + f" ({self._plot_iteration+1})")    
             # plt.pause(0.00001)
         
-            self.fig.savefig(f"fig/{self.cfg['train_cfg']['x_dim']}dim_{self.cfg['train_cfg']['model_type']}_{self.cfg['train_cfg']['num_samples']}init_{self._plot_iteration+1}iter.png")
+            save_img_path = f'./fig/train_{self.cfg["train_cfg"]["dataset"]}/{self.cfg["train_cfg"]["model_type"]}'
+            import os
+            os.makedirs(save_img_path, exist_ok=True, mode=0o755)
+            self.fig.savefig(f"{save_img_path}/{self.cfg['train_cfg']['x_dim']}dim_{self.cfg['train_cfg']['model_type']}_{self.cfg['train_cfg']['num_samples']}init_{self._plot_iteration+1}iter.png")
             
             self._plot_iteration += 1
             
@@ -295,6 +293,7 @@ class TargetSpace(object):
     def random_sample(self):
         """
         Creates random points within the bounds of the space.
+        used in [suggest()] in [bayesopt_custom]
 
         Returns
         ----------
@@ -319,6 +318,9 @@ class TargetSpace(object):
     # TODO: sample from toy data pool
     # custom
     def sample_single(self):
+        """
+        used in [suggest()] in [bayesopt_custom]
+        """
         data = np.empty((1, self.dim))
         # for col, (lower, upper) in enumerate(self._bounds):
         #     data.T[col] = self.random_state.uniform(lower, upper, size=1)

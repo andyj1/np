@@ -117,15 +117,16 @@ class BayesianOptimization(Observable):
         
     # TODO:
     def suggest(self, utility_function):
-        """Most promissing point to probe next"""
+        """Most promising point to probe next"""
         # optimizing acquisition
         if len(self._space) == 0:
             # return self._space.array_to_params(self._space.random_sample())
             return self._space.array_to_params(self._space.sample_single())
 
-        # Sklearn's GP throws a large number of warnings at times, but
+        # sklearn's GP throws a large number of warnings at times, but
         # we don't really need to see them here.
-        # print('regressor to be fit with:\n\ttarget space params', self._space.params, '\n\ttarget space targets', self._space.target)
+        # print('regressor to be fit with:\n\ttarget space params', self._space.params, 
+        #       '\n\ttarget space targets', self._space.target)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             
@@ -156,7 +157,7 @@ class BayesianOptimization(Observable):
         )
         
         self.num_candidates_sampled += 1
-
+    
         return self._space.array_to_params(suggestion)
 
     def _prime_queue(self, init_points):
@@ -221,12 +222,12 @@ class BayesianOptimization(Observable):
         while not self._queue.empty or iteration < n_iter:
             try:
                 x_probe = next(self._queue)
-                print('probing in queue:', x_probe)
+                # print('probing in queue:', x_probe)
             except StopIteration:
                 util.update_params()
                 x_probe = self.suggest(util)
                 iteration += 1
-                print('new point suggested:', x_probe)
+                # print('new point suggested:', x_probe)
             
             # print('QUEUE: TOTAL', len(self._queue))
             # print('CURRENT PARAMS, TARGETS: TOTAL', len(self._space.params))
@@ -239,8 +240,27 @@ class BayesianOptimization(Observable):
                     self._bounds_transformer.transform(self._space))
 
 
+        # ANP: 1000/200, 20x5 candidates, 100 initial
+        
+        # compute loss (MSE, MAE)
+        print(self._space._candidate_targets)
+        self.compute_MAE()
+        self.compute_MSE()
+        
         self.dispatch(Events.OPTIMIZATION_END)
 
+    def compute_MAE(self):
+        from sklearn.metrics import mean_absolute_error
+        mae = mean_absolute_error([0]*len(self._space._candidate_targets), self._space._candidate_targets)
+        print('MAE:', mae)        
+        
+    def compute_MSE(self):
+        from sklearn.metrics import mean_squared_error
+        mse = mean_squared_error([0]*len(self._space._candidate_targets), self._space._candidate_targets)
+        print('MSE:', mse)
+        rmse = mean_squared_error([0]*len(self._space._candidate_targets), self._space._candidate_targets, squared=False)
+        print('RMSE:', rmse)
+    
     def set_bounds(self, new_bounds):
         """
         A method that allows changing the lower and upper searching bounds
