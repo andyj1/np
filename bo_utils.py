@@ -23,6 +23,8 @@ def setup():
     seed = 42
     torch.manual_seed(seed)
     torch.backends.cudnn.benchmark = True
+    # torch.backends.cudnn.deterministic = True
+
 
 def black_box_function(x1, x2): 
     '''objective function

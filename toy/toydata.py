@@ -10,6 +10,9 @@ class ToyData(object):
         config = yaml.load(open(os.path.join(os.getcwd(), 'toy/toyconfig.yml'), 'r'), yaml.FullLoader)['toy']
         self.num_samples = config['num_samples']
         
+        seed = 42
+        torch.manual_seed(seed)
+        
         # PRE L, W
         self.mu1 = config['mu1']
         self.sigma1 = config['sigma1']
@@ -30,8 +33,8 @@ class ToyData(object):
         self.sigma_spi_center2 = config['sigma_spi_center2']
     
     def preLW(self):
-        l = torch.normal(mean=self.mu1, std=self.sigma1, size=(self.num_samples, 1))
-        w = torch.normal(mean=self.mu2, std=self.sigma2, size=(self.num_samples, 1))
+        l = torch.normal(mean=self.mu1, std=self.sigma1, size=(self.num_samples, 1)) - 50
+        w = torch.normal(mean=self.mu2, std=self.sigma2, size=(self.num_samples, 1)) - 50
         return torch.cat([l, w], dim=1)
 
     def preAngle(self):

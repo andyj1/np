@@ -58,8 +58,9 @@ if __name__ == "__main__":
     optimizer.maximize(
         init_points=train_cfg['num_samples'], # number of initial points
         n_iter=acq_cfg['num_candidates'],      # num candidates
-        # acq='ucb', # 'cub', 'ei', 'poi'
-        acq='ei',
+        acq='ucb', # 'ucb', 'ei', 'poi'
+        # acq='ei',
+        # acq='poi',
         kappa=acq_cfg['beta'],      # beta (smaller = more exploitative)
     )
     end = time.time()

@@ -47,9 +47,9 @@ class TargetSpace(object):
         
         num_samples = self.cfg['train_cfg']['num_samples']
         data_cfg = self.cfg['data_cfg']
+        type = self.cfg['train_cfg']['dataset']
         
         # start = time.time()
-        type = 'mom4'
         self.dataset = custom.CustomData(input_dim=2, num_samples=num_samples, type=type, cfg=data_cfg)
         
         self.index = 0
@@ -77,6 +77,7 @@ class TargetSpace(object):
         self._cache = {}
         
         self._candidate_targets = np.empty(shape=(0))
+        self._original_data_targets = np.empty(shape=(0))
         
     def __contains__(self, x):
         return _hashable(x) in self._cache
@@ -260,7 +261,7 @@ class TargetSpace(object):
             
         # plot a newly sampled candidate
         if sample_type == 'candidate':
-            # append candidate target
+            # append candidate target (just for computing loss purposes)
             self._candidate_targets = np.concatenate([self._candidate_targets, [-target]])
             
             # ax = plt.gca(projection='3d')
@@ -287,7 +288,8 @@ class TargetSpace(object):
             self.fig.savefig(f"{save_img_path}/{self.cfg['train_cfg']['x_dim']}dim_{self.cfg['train_cfg']['model_type']}_{self.cfg['train_cfg']['num_samples']}init_{self._plot_iteration+1}iter.png")
             
             self._plot_iteration += 1
-            
+        else:
+            self._original_data_targets = np.concatenate([self._original_data_targets, [-target]])
         return target
 
     def random_sample(self):

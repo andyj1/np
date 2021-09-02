@@ -244,22 +244,36 @@ class BayesianOptimization(Observable):
         
         # compute loss (MSE, MAE)
         print(self._space._candidate_targets)
-        self.compute_MAE()
-        self.compute_MSE()
+        print(self._space._original_data_targets)
+        
+        print('===candidate data===')
+        self.compute_loss_candidate()
+        print('===initial data===')
+        self.compute_loss_original()
         
         self.dispatch(Events.OPTIMIZATION_END)
 
-    def compute_MAE(self):
+    # compute loss on candidates only
+    def compute_loss_candidate(self):
         from sklearn.metrics import mean_absolute_error
         mae = mean_absolute_error([0]*len(self._space._candidate_targets), self._space._candidate_targets)
-        print('MAE:', mae)        
-        
-    def compute_MSE(self):
+        print(f'MAE:{mae:.4f}')
         from sklearn.metrics import mean_squared_error
-        mse = mean_squared_error([0]*len(self._space._candidate_targets), self._space._candidate_targets)
-        print('MSE:', mse)
         rmse = mean_squared_error([0]*len(self._space._candidate_targets), self._space._candidate_targets, squared=False)
-        print('RMSE:', rmse)
+        print(f'RMSE:{rmse:.4f}')
+        mse = mean_squared_error([0]*len(self._space._candidate_targets), self._space._candidate_targets)
+        print(f'MSE:{mse:.4f}')
+        
+    # compute loss on original data (initial)
+    def compute_loss_original(self):
+        from sklearn.metrics import mean_absolute_error
+        mae = mean_absolute_error([0]*len(self._space._original_data_targets), self._space._original_data_targets)
+        print(f'MAE:{mae:.4f}')
+        from sklearn.metrics import mean_squared_error
+        rmse = mean_squared_error([0]*len(self._space._original_data_targets), self._space._original_data_targets, squared=False)
+        print(f'RMSE:{rmse:.4f}')
+        mse = mean_squared_error([0]*len(self._space._original_data_targets), self._space._original_data_targets)
+        print(f'MSE:{mse:.4f}')
     
     def set_bounds(self, new_bounds):
         """

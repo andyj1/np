@@ -111,8 +111,6 @@ if __name__ == '__main__':
     x1, x2 = torch.from_numpy(xy.iloc[:, 0].to_numpy()), torch.from_numpy(xy.iloc[:, 1].to_numpy())
     dist = f(x1, x2)
     
-    
-    
     # x1 = torch.ones(100, 1)*40
     # x2 = torch.ones(100, 1)*10
     # dist = f(x1.squeeze(-1), x2.squeeze(-1))

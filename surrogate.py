@@ -156,6 +156,9 @@ class SurrogateModel(object):
                                                         sigma.cpu().detach(),
                                                         ax)
                     ax.view_init(elev=15, azim=-45)
+                    # ax.set_xlim([-100, 100])
+                    # ax.set_ylim([-100, 100])
+                    
                     # plt.draw()
                     title_str = f'{self.model_type.upper()} (epoch {epoch})'
                     ax.set_title(title_str)

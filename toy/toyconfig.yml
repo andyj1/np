@@ -5,9 +5,9 @@ toy:
   # ======DATA======
   # PRE L, W
   mu1: 0      # L
-  sigma1: 10
+  sigma1: 20
   mu2: 0      # W
-  sigma2: 10
+  sigma2: 20
 
   # PRE Angle (normal sample)
   mu_theta: 15

@@ -25,7 +25,6 @@ class CustomData(torch.utils.data.Dataset):
         self.num_samples = num_samples
         self.type = type
         self.cfg = cfg
-        self.chip = 'R1005'
         
         self.df = self.fetch_dataframe(type)
         self.x = self.df.iloc[:, :self.num_dim].values
@@ -57,9 +56,8 @@ class CustomData(torch.utils.data.Dataset):
             
             x = pd.DataFrame(x, columns=[i+1 for i in range(self.num_dim)]).astype(np.float32)
             y = x.iloc[:, :2].apply(np.linalg.norm, axis=1).astype(np.float32)  # objective: L-2 norm
-        
+                    
         elif type == 'mom4':            
-            
             df = pd.read_csv('./datasets/spi_clustered.csv').drop(['Unnamed: 0'], axis=1)
             df.reset_index(drop=True, inplace=True)
             assert df.isnull().sum().sum() == 0, 'there is a NULL value in the loaded data'
@@ -67,6 +65,7 @@ class CustomData(torch.utils.data.Dataset):
             input_vars = ['PRE_L','PRE_W']
             output_vars = ['POST_L','POST_W']
             vars = input_vars+output_vars
+            self.chip = 'R1005'
             
             xy = customMOM4chipsample(df, 
                                       input_vars=vars, 
@@ -130,11 +129,13 @@ def customMOM4chipsample(df: pd.DataFrame, input_vars: list, num_samples: int, c
             if name == (chiptype, 0, 20, 20):
                 chip_df = group
                 print('MOM4 sorted by:', name)
+                break
             else:
                 continue
     # if none, there is no value for that chip
     assert chip_df is not None, '[Error] check chip type' 
     
+    print('length:', len(chip_df))
     sampled_chips = chip_df.sample(n=num_samples, random_state=random_state)[input_vars]
     return sampled_chips
 

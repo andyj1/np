@@ -7,7 +7,8 @@ import os
 tension_level = {'R0402': (1000*500)/(400*200), 'R0603': (1000*500)/(600*300), 'R1005': (1000*500)/(1000*500)}
 
 model_dir = 'reflow_oven'
-file_path = 'regressor_R1005_50_trees_100_deep_random_forest.pkl'
+# file_path = 'regressor_R1005_50_trees_100_deep_random_forest.pkl'
+file_path = 'R1005_0_20_20.pkl'
 model_path = os.path.join(model_dir, file_path)
 regressor = joblib.load(model_path)
 
