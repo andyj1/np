@@ -86,6 +86,11 @@ class BayesianOptimization(Observable):
         self.num_candidates_sampled = 0
         self.num_candidates_to_sample = self.cfg['train_cfg']['num_candidates_per_train']
         
+        # losses for candidates
+        self.MAElist = []
+        self.RMSElist = []
+        self.MSElist = []
+        
         super(BayesianOptimization, self).__init__(events=DEFAULT_EVENTS)
         
     @property
@@ -131,6 +136,12 @@ class BayesianOptimization(Observable):
             warnings.simplefilter("ignore")
             
             if (self.num_candidates_sampled % self.num_candidates_to_sample == 0):
+                
+                if self.num_candidates_sampled > 0:
+                    # compute loss on candidates up to current iteration
+                    # print(self._space._candidate_targets)
+                    self.compute_loss_candidate()
+                
                 # print('training model...', end='')
                 start = time.time()
                 if self._using_gp:
@@ -243,13 +254,11 @@ class BayesianOptimization(Observable):
         # ANP: 1000/200, 20x5 candidates, 100 initial
         
         # compute loss (MSE, MAE)
-        print(self._space._candidate_targets)
-        print(self._space._original_data_targets)
+        # print(self._space._candidate_targets)
+        # print(self._space._original_data_targets)
         
-        print('===candidate data===')
-        self.compute_loss_candidate()
-        print('===initial data===')
-        self.compute_loss_original()
+        # self.compute_loss_candidate()
+        # self.compute_loss_original()
         
         self.dispatch(Events.OPTIMIZATION_END)
 
@@ -257,24 +266,32 @@ class BayesianOptimization(Observable):
     def compute_loss_candidate(self):
         from sklearn.metrics import mean_absolute_error
         mae = mean_absolute_error([0]*len(self._space._candidate_targets), self._space._candidate_targets)
-        print(f'MAE:{mae:.4f}')
         from sklearn.metrics import mean_squared_error
         rmse = mean_squared_error([0]*len(self._space._candidate_targets), self._space._candidate_targets, squared=False)
-        print(f'RMSE:{rmse:.4f}')
         mse = mean_squared_error([0]*len(self._space._candidate_targets), self._space._candidate_targets)
+        
+        print(f'MAE:{mae:.4f}')
+        print(f'RMSE:{rmse:.4f}')
         print(f'MSE:{mse:.4f}')
+        
+        self.MAElist.append(round(mae, 4))
+        self.RMSElist.append(round(rmse, 4))
+        self.MSElist.append(round(mse,4))
+        return mae, rmse, mse
         
     # compute loss on original data (initial)
     def compute_loss_original(self):
         from sklearn.metrics import mean_absolute_error
         mae = mean_absolute_error([0]*len(self._space._original_data_targets), self._space._original_data_targets)
-        print(f'MAE:{mae:.4f}')
         from sklearn.metrics import mean_squared_error
         rmse = mean_squared_error([0]*len(self._space._original_data_targets), self._space._original_data_targets, squared=False)
-        print(f'RMSE:{rmse:.4f}')
         mse = mean_squared_error([0]*len(self._space._original_data_targets), self._space._original_data_targets)
-        print(f'MSE:{mse:.4f}')
-    
+        
+        # print(f'MAE:{mae:.4f}')
+        # print(f'RMSE:{rmse:.4f}')
+        # print(f'MSE:{mse:.4f}')
+        return mae, rmse, mse
+
     def set_bounds(self, new_bounds):
         """
         A method that allows changing the lower and upper searching bounds

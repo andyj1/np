@@ -53,7 +53,7 @@ if __name__ == "__main__":
         surrogate=surrogate,
         cfg=cfg        
     )
-
+    
     start = time.time()
     optimizer.maximize(
         init_points=train_cfg['num_samples'], # number of initial points
@@ -80,3 +80,35 @@ if __name__ == "__main__":
     target = optimizer.max['target']
     print('Result (optimized):', candidate, target)
     
+    
+    
+    # summarize losses
+    print('===initial data===')
+    mae, rmse, mse = optimizer.compute_loss_original()
+    print(f'MAE: {mae:.4f}\n',
+          f'RMSE: {rmse:.4f}\n',
+          f'MSE: {mse:.4f}')
+    print()
+    
+    print('===candidate data===')
+    print(f'MAE: {optimizer.MAElist}\n',
+          f'RMSE: {optimizer.RMSElist}\n',
+          f'MSE: {optimizer.MSElist}')
+    
+    # plot losses
+    import numpy as np
+    import matplotlib.pyplot as plt
+    xs = np.arange(1,len(optimizer.MAElist)+1, 1)
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(xs, optimizer.MAElist, 'r-', label='MAE')
+    ax.plot(xs, optimizer.RMSElist, 'g-', label='RMSE')
+    ax.plot([0], mae, 'ro', label='Initial MAE')
+    ax.plot([0], rmse, 'go', label='Initial RMSE')
+    # ax.plot(xs, optimizer.MSElist, 'b-.', label='MSE')
+    ax.set_xlabel('Sample iteration (x10)')
+    ax.set_ylabel('Loss')
+    ax.set_title(f'{train_cfg["model_type"]}')
+    ax.legend(loc='best')
+    
+    fig.savefig(f'./fig/losses/loss_{train_cfg["model_type"]}_mom4.png', dpi=300)
